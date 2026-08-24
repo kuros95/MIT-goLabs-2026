@@ -1,11 +1,12 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-import "os"
-
+import (
+	"fmt"
+	"hash/fnv"
+	"log"
+	"net/rpc"
+	"os"
+)
 
 // Map functions return a slice of KeyValue.
 type KeyValue struct {
@@ -22,7 +23,6 @@ func ihash(key string) int {
 }
 
 var coordSockName string // socket for coordinator
-
 
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
@@ -64,6 +64,16 @@ func CallExample() {
 	}
 }
 
+func getTask() string {
+	reply := GivenTask{}
+	ok := callForTask("Coordinator.GetTask", &reply)
+	if ok {
+		fmt.Printf("received task: %v\n", reply.TaskType)
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+}
+
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
@@ -76,6 +86,21 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	defer c.Close()
 
 	if err := c.Call(rpcname, args, reply); err == nil {
+		return true
+	}
+	log.Printf("%d: call failed err %v", os.Getpid(), err)
+	return false
+}
+
+func callForTask(rpcname string, reply interface{}) bool {
+	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	c, err := rpc.DialHTTP("unix", coordSockName)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	defer c.Close()
+
+	if err := c.Call(rpcname, reply); err == nil {
 		return true
 	}
 	log.Printf("%d: call failed err %v", os.Getpid(), err)
