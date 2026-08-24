@@ -64,14 +64,16 @@ func CallExample() {
 	}
 }
 
-func getTask() string {
+func getTask() (string, int, string) {
+
 	reply := GivenTask{}
-	ok := callForTask("Coordinator.GetTask", &reply)
+	ok := call("Coordinator.GetTask", &AmIWorking{Status: true}, &reply)
 	if ok {
-		fmt.Printf("received task: %v\n", reply.TaskType)
+		fmt.Printf("worker %d received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
 		fmt.Printf("call failed!\n")
 	}
+	return reply.TaskType, reply.TaskID, reply.Filename
 }
 
 // send an RPC request to the coordinator, wait for the response.
@@ -86,21 +88,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	defer c.Close()
 
 	if err := c.Call(rpcname, args, reply); err == nil {
-		return true
-	}
-	log.Printf("%d: call failed err %v", os.Getpid(), err)
-	return false
-}
-
-func callForTask(rpcname string, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	c, err := rpc.DialHTTP("unix", coordSockName)
-	if err != nil {
-		log.Fatal("dialing:", err)
-	}
-	defer c.Close()
-
-	if err := c.Call(rpcname, reply); err == nil {
 		return true
 	}
 	log.Printf("%d: call failed err %v", os.Getpid(), err)

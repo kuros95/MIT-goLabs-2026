@@ -1,14 +1,19 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
-
+import (
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
 type Coordinator struct {
 	// Your definitions here.
+	isDone bool
+	files  []string
+	tasks  []GivenTask // map of worker IDs to their status (true if working, false if idle)
+	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
 }
 
@@ -22,6 +27,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) GetTask(args *AmIWorking, reply *GivenTask) error {
+
+	return nil
+}
 
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) server(sockname string) {
@@ -42,7 +51,6 @@ func (c *Coordinator) Done() bool {
 
 	// Your code here.
 
-
 	return ret
 }
 
@@ -53,7 +61,6 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c := Coordinator{}
 
 	// Your code here.
-
 
 	c.server(sockname)
 	return &c
