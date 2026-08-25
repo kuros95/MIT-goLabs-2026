@@ -39,6 +39,11 @@ func (c *Coordinator) GetTask(args *IsWorking, reply *Task) error {
 	return nil
 }
 
+func (c *Coordinator) ReportTask(args *IsWorking, reply *Task) error {
+	// Set task status to waiting, so that worker ID is preserved.
+	return nil
+}
+
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) server(sockname string) {
 	rpc.Register(c)
