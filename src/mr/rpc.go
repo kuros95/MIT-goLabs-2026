@@ -19,14 +19,15 @@ type ExampleReply struct {
 	Y int
 }
 
-type AmIWorking struct {
+type IsWorking struct {
 	Status bool
 }
 
-type GivenTask struct {
-	TaskID   int
-	TaskType string // "map" or "reduce"
-	Filename string // for map tasks, the input file name; for reduce tasks, can be empty or a list of intermediate files
+type Task struct {
+	TaskID    int
+	TaskType  string // "map" or "reduce"
+	Filename  string // for map tasks, the input file name; for reduce tasks, can be empty or a list of intermediate files
+	IsWorking bool   // true if the worker is currently working on a task, false otherwise
 }
 
 // Add your RPC definitions here.

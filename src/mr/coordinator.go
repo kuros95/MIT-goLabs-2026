@@ -10,9 +10,10 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	isDone bool
-	files  []string
-	tasks  []GivenTask // map of worker IDs to their status (true if working, false if idle)
+	isDone        bool
+	filesToMap    []string
+	filesToReduce []string
+	tasks         []Task // map of worker IDs to their status (true if working, false if idle)
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
 }
@@ -27,8 +28,14 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) GetTask(args *AmIWorking, reply *GivenTask) error {
-
+func (c *Coordinator) GetTask(args *IsWorking, reply *Task) error {
+	if len(c.filesToReduce) > 0 {
+		reply.TaskType = "reduce"
+	} else if len(c.filesToReduce) == 0 {
+		reply.TaskType = "map"
+	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
+		reply.TaskType = "done"
+	}
 	return nil
 }
 

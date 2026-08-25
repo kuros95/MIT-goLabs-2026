@@ -31,7 +31,20 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	coordSockName = sockname
 
 	// Your worker implementation here.
+	
+	for {
+		getTask()
 
+		readFile("pg-being_ernest.txt")
+
+		mapf("pg-being_ernest.txt", "some contents")
+
+		reducef("some key", []string{"value1", "value2"})
+
+		reportTask()
+	}
+
+	// answer when called if working
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
 
@@ -67,13 +80,25 @@ func CallExample() {
 func getTask() (string, int, string) {
 
 	reply := GivenTask{}
-	ok := call("Coordinator.GetTask", &AmIWorking{Status: true}, &reply)
+	ok := call("Coordinator.GetTask", &IsWorking{Status: true}, &reply)
 	if ok {
 		fmt.Printf("worker %d received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
 		fmt.Printf("call failed!\n")
 	}
 	return reply.TaskType, reply.TaskID, reply.Filename
+}
+
+func reportTask(taskID int, taskType string, filename string) bool {
+	
+	args:= Task{taskID: taskID, TaskType: taskType, Filename: filename, IsWorking: true}
+	ok := call("Coordinator.ReportTask", &args, &reply)
+	if ok {
+		fmt.Printf("worker %d reported task: %v\n", args.TaskID, args.TaskType)
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+	return true
 }
 
 // send an RPC request to the coordinator, wait for the response.
@@ -93,3 +118,10 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	log.Printf("%d: call failed err %v", os.Getpid(), err)
 	return false
 }
+
+func readFile(filename string)  {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	
