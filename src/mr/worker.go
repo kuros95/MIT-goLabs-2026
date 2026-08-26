@@ -102,8 +102,9 @@ func reportTask(taskID int, taskType string, intermediateFilename string) string
 	return reply.TaskType
 }
 
-func (t *Task) StillWorking() error {
-
+func (w *WorkerType) StillWorking(args *WorkerType, reply *WorkerType) error {
+	w.IsWorking = true
+	reply.IsWorking = true
 	return nil
 }
 
