@@ -15,6 +15,7 @@ type Coordinator struct {
 	filesToMap    []string
 	filesToReduce []string
 	tasks         []Task
+	workers       []WorkerType
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
 }
@@ -29,20 +30,46 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) GetTask(args *IsWorking, reply *Task) error {
+func (c *Coordinator) GetTask(args *WorkerType, reply *Task) error {
 
 	// Assign the first file in the list for mapping
 	// Assign file index as task ID
+	found := false
+	for w := range c.workers {
+		if c.workers[w].WorkerID == args.WorkerID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		c.workers = append(c.workers, *args)
+	}
+
 	if len(c.filesToReduce) > 0 {
 		reply.TaskType = "reduce"
 		reply.TaskID = len(c.filesToReduce) - 1
 		reply.Filename = c.filesToReduce[reply.TaskID]
 	} else if len(c.filesToReduce) == 0 {
 		reply.TaskType = "map"
+		isProcessed := false
+		for f := range c.filesToMap {
+			for w := range c.workers {
+				if c.workers[w].Task.Filename == c.filesToMap[f] {
+					isProcessed = true
+					break
+				}
+			}
+			if !isProcessed {
+				reply.TaskID = slices.Index(c.filesToMap, c.filesToMap[f])
+			}
+		}
 		reply.Filename = c.filesToMap[reply.TaskID]
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.TaskType = "done"
 	}
+	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = *reply
+	c.tasks = append(c.tasks, *reply)
+
 	return nil
 }
 

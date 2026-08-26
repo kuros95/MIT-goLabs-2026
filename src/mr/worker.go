@@ -24,8 +24,6 @@ func ihash(key string) int {
 
 var coordSockName string // socket for coordinator
 
-var worker Task
-
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
@@ -80,8 +78,9 @@ func CallExample() {
 
 func getTask() (string, int, string) {
 
+	args := WorkerType{WorkerID: os.Getpid(), IsWorking: true}
 	reply := Task{}
-	ok := call("Coordinator.GetTask", &IsWorking{Status: true}, &reply)
+	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
 		fmt.Printf("worker %d received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
@@ -92,7 +91,7 @@ func getTask() (string, int, string) {
 
 func reportTask(taskID int, taskType string, intermediateFilename string) string {
 
-	args := Task{TaskID: taskID, TaskType: taskType, Filename: intermediateFilename, IsWorking: true}
+	args := Task{TaskID: taskID, TaskType: taskType, Filename: intermediateFilename}
 	reply := Task{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
