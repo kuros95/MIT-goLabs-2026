@@ -24,6 +24,8 @@ func ihash(key string) int {
 
 var coordSockName string // socket for coordinator
 
+var worker Task
+
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
@@ -35,8 +37,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	for {
 		// IT'S ONLY A DRAFT
 		getTask()
-
-		readFile("pg-being_ernest.txt")
 
 		mapf("pg-being_ernest.txt", "some contents")
 
@@ -85,7 +85,7 @@ func getTask() (string, int, string) {
 	if ok {
 		fmt.Printf("worker %d received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
-		fmt.Printf("call failed!\n")
+		fmt.Printf("task acquisition failed!\n")
 	}
 	return reply.TaskType, reply.TaskID, reply.Filename
 }
@@ -98,9 +98,14 @@ func reportTask(taskID int, taskType string, intermediateFilename string) bool {
 	if ok {
 		fmt.Printf("worker %d reported task: %v\n", args.TaskID, args.TaskType)
 	} else {
-		fmt.Printf("call failed!\n")
+		fmt.Printf("task report failed!\n")
 	}
 	return reply.Status
+}
+
+func (t *Task) StillWorking() error {
+
+	return nil
 }
 
 // send an RPC request to the coordinator, wait for the response.
@@ -119,12 +124,4 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	}
 	log.Printf("%d: call failed err %v", os.Getpid(), err)
 	return false
-}
-
-func readFile(filename string) {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		log.Fatalf("cannot read %v", filename)
-	}
-
 }
