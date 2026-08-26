@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"slices"
 )
 
 type Coordinator struct {
@@ -13,7 +14,7 @@ type Coordinator struct {
 	isDone        bool
 	filesToMap    []string
 	filesToReduce []string
-	tasks         []Task // map of worker IDs to their status (true if working, false if idle)
+	tasks         []Task
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
 }
@@ -29,18 +30,33 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) GetTask(args *IsWorking, reply *Task) error {
+
+	// Assign the first file in the list for mapping
+	// Assign file index as task ID
 	if len(c.filesToReduce) > 0 {
 		reply.TaskType = "reduce"
+		reply.TaskID = len(c.filesToReduce) - 1
+		reply.Filename = c.filesToReduce[reply.TaskID]
 	} else if len(c.filesToReduce) == 0 {
 		reply.TaskType = "map"
+		reply.Filename = c.filesToMap[reply.TaskID]
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.TaskType = "done"
 	}
 	return nil
 }
 
-func (c *Coordinator) ReportTask(args *IsWorking, reply *Task) error {
+func (c *Coordinator) ReportTask(args *Task, reply *Task) error {
 	// Set task status to waiting, so that worker ID is preserved.
+	if args.TaskType == "map" {
+		c.filesToMap = slices.Delete(c.filesToMap, args.TaskID, args.TaskID+1)
+		c.filesToReduce = append(c.filesToReduce, args.Filename)
+	} else if args.TaskType == "reduce" {
+		c.filesToReduce = slices.Delete(c.filesToReduce, args.TaskID, args.TaskID+1)
+	}
+
+	reply.TaskType = "waiting"
+
 	return nil
 }
 

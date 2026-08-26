@@ -90,17 +90,17 @@ func getTask() (string, int, string) {
 	return reply.TaskType, reply.TaskID, reply.Filename
 }
 
-func reportTask(taskID int, taskType string, intermediateFilename string) bool {
+func reportTask(taskID int, taskType string, intermediateFilename string) string {
 
 	args := Task{TaskID: taskID, TaskType: taskType, Filename: intermediateFilename, IsWorking: true}
-	reply := IsWorking{Status: true}
+	reply := Task{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
 		fmt.Printf("worker %d reported task: %v\n", args.TaskID, args.TaskType)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
-	return reply.Status
+	return reply.TaskType
 }
 
 func (t *Task) StillWorking() error {
