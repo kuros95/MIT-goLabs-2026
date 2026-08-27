@@ -82,6 +82,16 @@ func (c *Coordinator) ReportTask(args *Task, reply *Task) error {
 		c.filesToReduce = slices.Delete(c.filesToReduce, args.TaskID, args.TaskID+1)
 	}
 
+	for w := range c.workers {
+		if c.workers[w].Task.TaskID == args.TaskID {
+			c.workers[w].Task.TaskType = "waiting"
+		}
+	}
+	for t := range c.tasks {
+		if c.tasks[t].TaskID == args.TaskID {
+			c.tasks[t].TaskType = "waiting"
+		}
+	}
 	reply.TaskType = "waiting"
 
 	return nil
