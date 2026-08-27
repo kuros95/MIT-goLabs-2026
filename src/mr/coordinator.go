@@ -14,7 +14,6 @@ type Coordinator struct {
 	isDone        bool
 	filesToMap    []string
 	filesToReduce []string
-	tasks         []Task
 	workers       []WorkerType
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
@@ -30,10 +29,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) GetTask(args *WorkerType, reply *Task) error {
-
-	// Assign the first file in the list for mapping
-	// Assign file index as task ID
+func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	found := false
 	for w := range c.workers {
 		if c.workers[w].WorkerID == args.WorkerID {
@@ -46,11 +42,11 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *Task) error {
 	}
 
 	if len(c.filesToReduce) > 0 {
-		reply.TaskType = "reduce"
-		reply.TaskID = len(c.filesToReduce) - 1
-		reply.Filename = c.filesToReduce[reply.TaskID]
+		reply.Task.TaskType = "reduce"
+		reply.Task.TaskID = len(c.filesToReduce) - 1
+		reply.Task.Filename = c.filesToReduce[reply.Task.TaskID]
 	} else if len(c.filesToReduce) == 0 {
-		reply.TaskType = "map"
+		reply.Task.TaskType = "map"
 		isProcessed := false
 		for f := range c.filesToMap {
 			for w := range c.workers {
@@ -60,39 +56,33 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *Task) error {
 				}
 			}
 			if !isProcessed {
-				reply.TaskID = slices.Index(c.filesToMap, c.filesToMap[f])
+				reply.Task.TaskID = slices.Index(c.filesToMap, c.filesToMap[f])
 			}
 		}
-		reply.Filename = c.filesToMap[reply.TaskID]
+		reply.Task.Filename = c.filesToMap[reply.Task.TaskID]
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
-		reply.TaskType = "done"
+		reply.Task.TaskType = "done"
 	}
-	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = *reply
-	c.tasks = append(c.tasks, *reply)
+	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 
 	return nil
 }
 
-func (c *Coordinator) ReportTask(args *Task, reply *Task) error {
+func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	// Set task status to waiting, so that worker ID is preserved.
-	if args.TaskType == "map" {
-		c.filesToMap = slices.Delete(c.filesToMap, args.TaskID, args.TaskID+1)
-		c.filesToReduce = append(c.filesToReduce, args.Filename)
-	} else if args.TaskType == "reduce" {
-		c.filesToReduce = slices.Delete(c.filesToReduce, args.TaskID, args.TaskID+1)
+	if args.Task.TaskType == "map" {
+		c.filesToMap = slices.Delete(c.filesToMap, args.Task.TaskID, args.Task.TaskID+1)
+		c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+	} else if args.Task.TaskType == "reduce" {
+		c.filesToReduce = slices.Delete(c.filesToReduce, args.Task.TaskID, args.Task.TaskID+1)
 	}
 
 	for w := range c.workers {
-		if c.workers[w].Task.TaskID == args.TaskID {
+		if c.workers[w].Task.TaskID == args.Task.TaskID {
 			c.workers[w].Task.TaskType = "waiting"
 		}
 	}
-	for t := range c.tasks {
-		if c.tasks[t].TaskID == args.TaskID {
-			c.tasks[t].TaskType = "waiting"
-		}
-	}
-	reply.TaskType = "waiting"
+	reply.Task.TaskType = "waiting"
 
 	return nil
 }
@@ -114,6 +104,10 @@ func (c *Coordinator) server(sockname string) {
 func (c *Coordinator) Done() bool {
 	ret := false
 
+	if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
+		ret = true
+	}
+
 	// Your code here.
 
 	return ret
@@ -124,6 +118,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
+	c.filesToMap = files
 
 	// Your code here.
 
