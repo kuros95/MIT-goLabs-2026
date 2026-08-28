@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"path/filepath"
 )
 
 // Map functions return a slice of KeyValue.
@@ -34,11 +35,17 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 	for {
 		// IT'S ONLY A DRAFT
-		getTask()
+		taskID, taskType, taskFile := getTask()
 
-		mapf("pg-being_ernest.txt", "some contents")
-
-		reducef("some key", []string{"value1", "value2"})
+		if taskType == "map" {
+			contents := readFile(taskFile)
+			intermediate := mapf(taskFile, contents)
+			path := filepath.Join(os.TempDir(), "m-"+taskFile)
+			err := os.WriteFile(path)
+			reportTask(taskID, taskType, "m-"+taskFile)
+		} else if taskType == "reduce" {
+			reducef("some key", []string{"value1", "value2"})
+		}
 
 		reportTask()
 	}
@@ -76,7 +83,7 @@ func CallExample() {
 	}
 }
 
-func getTask() (string, int, string) {
+func getTask() (int, string, string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsWorking: true}
 	reply := Task{}
@@ -86,7 +93,7 @@ func getTask() (string, int, string) {
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
-	return reply.TaskType, reply.TaskID, reply.Filename
+	return reply.TaskID, reply.TaskType, reply.Filename
 }
 
 func reportTask(taskID int, taskType string, intermediateFilename string) string {
@@ -106,6 +113,25 @@ func (w *WorkerType) StillWorking(args *WorkerType, reply *WorkerType) error {
 	w.IsWorking = true
 	reply.IsWorking = true
 	return nil
+}
+
+func readFile(letter string, taskFile string) string {
+	//read every file and read only the given letter from it
+	//return every word starting with given letter
+	draft, err := os.ReadFile(taskFile)
+	if err != nil {
+		fmt.Printf("error while reading file %v", taskFile)
+		return ""
+	}
+	//transform []byte to []string and pass it to for loop
+	var final []string
+	for w := range draft {
+		if w[0] == letter {
+			final = append(final, string(w))
+		}
+	}
+	//transform []string to string and return
+	return final
 }
 
 // send an RPC request to the coordinator, wait for the response.
