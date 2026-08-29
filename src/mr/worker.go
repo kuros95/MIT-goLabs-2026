@@ -38,21 +38,38 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 		taskID, taskType, taskFile := getTask()
 
-		if taskType == "map" {
+		if taskType == "done" {
+			break
+		} else if taskType == "waiting" {
+			continue
+		} else if taskType == "map" {
 			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
-			outputFileName := fmt.Sprintf("m-%v-%v", taskFile, taskID)
-			outputFile, err := os.Create(outputFileName)
-			if err != nil {
-				log.Fatal("error creating output file:", err)
-			}
-			defer outputFile.Close()
-			for i := range intermediate {
-				fmt.Fprintf(outputFile, "%v %v\n", intermediate[i].Key, intermediate[i].Value)
-			}
-			reportTask(taskID, taskType, outputFileName)
+			reportTask(taskID, taskType, intermediate)
 		} else if taskType == "reduce" {
-			reducef("some key", []string{"value1", "value2"})
+			// get intermediate data from file for a given letter
+			// the intermediate data provided has to be sorted by key
+			i := 0
+			for i < len(intermediate) {
+				j := i + 1
+				for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+					j++
+				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, intermediate[k].Value)
+				}
+				output := reducef(intermediate[i].Key, values)
+
+				// this is the correct format for each line of Reduce output.
+				_, err := fmt.Fprintf(taskFile, "%v %v\n", intermediate[i].Key, output)
+				if err != nil {
+					fmt.Printf("error while writing to file %v", taskFile)
+				}
+
+				i = j
+			}
+			reportTask(taskID, taskType, nil)
 		}
 	}
 
@@ -102,7 +119,7 @@ func getTask() (string, string, string) {
 	return reply.TaskID, reply.TaskType, reply.Filename
 }
 
-func reportTask(taskID string, taskType string, intermediateFilename string) string {
+func reportTask(taskID string, taskType string, intermediateData []KeyValue) string {
 
 	args := Task{TaskID: taskID, TaskType: taskType, Filename: intermediateFilename}
 	reply := Task{}

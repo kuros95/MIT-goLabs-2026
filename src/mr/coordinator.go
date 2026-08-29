@@ -30,6 +30,8 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
+	// TaskID is the letter for which worker is generating intermediate data.
+	//
 	found := false
 	for w := range c.workers {
 		if c.workers[w].WorkerID == args.WorkerID {
@@ -42,6 +44,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	}
 
 	if len(c.filesToReduce) > 0 {
+		// sort intermediate data by key before sending to worker
 		reply.Task.TaskType = "reduce"
 		reply.Task.TaskID = len(c.filesToReduce) - 1
 		reply.Task.Filename = c.filesToReduce[reply.Task.TaskID]
@@ -119,6 +122,8 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	c.filesToMap = files
+	// after mapping one letter throughout all files, combine into one []KeyValue
+	// and write to file to send to Reduce worker.
 
 	// Your code here.
 
