@@ -20,7 +20,7 @@ type ExampleReply struct {
 }
 
 type Task struct {
-	TaskID   int
+	TaskID   string
 	TaskType string // "map" or "reduce"
 	Filename string // for map tasks, the input file name; for reduce tasks, can be empty or a list of intermediate files
 }

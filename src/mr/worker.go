@@ -6,7 +6,8 @@ import (
 	"log"
 	"net/rpc"
 	"os"
-	"path/filepath"
+	"strings"
+	"unicode"
 )
 
 // Map functions return a slice of KeyValue.
@@ -34,20 +35,25 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	// Your worker implementation here.
 
 	for {
-		// IT'S ONLY A DRAFT
+
 		taskID, taskType, taskFile := getTask()
 
 		if taskType == "map" {
-			contents := readFile(taskFile)
+			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
-			path := filepath.Join(os.TempDir(), "m-"+taskFile)
-			err := os.WriteFile(path)
-			reportTask(taskID, taskType, "m-"+taskFile)
+			outputFileName := fmt.Sprintf("m-%v-%v", taskFile, taskID)
+			outputFile, err := os.Create(outputFileName)
+			if err != nil {
+				log.Fatal("error creating output file:", err)
+			}
+			defer outputFile.Close()
+			for i := range intermediate {
+				fmt.Fprintf(outputFile, "%v %v\n", intermediate[i].Key, intermediate[i].Value)
+			}
+			reportTask(taskID, taskType, outputFileName)
 		} else if taskType == "reduce" {
 			reducef("some key", []string{"value1", "value2"})
 		}
-
-		reportTask()
 	}
 
 	// answer when called if working
@@ -83,7 +89,7 @@ func CallExample() {
 	}
 }
 
-func getTask() (int, string, string) {
+func getTask() (string, string, string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsWorking: true}
 	reply := Task{}
@@ -96,7 +102,7 @@ func getTask() (int, string, string) {
 	return reply.TaskID, reply.TaskType, reply.Filename
 }
 
-func reportTask(taskID int, taskType string, intermediateFilename string) string {
+func reportTask(taskID string, taskType string, intermediateFilename string) string {
 
 	args := Task{TaskID: taskID, TaskType: taskType, Filename: intermediateFilename}
 	reply := Task{}
@@ -116,22 +122,26 @@ func (w *WorkerType) StillWorking(args *WorkerType, reply *WorkerType) error {
 }
 
 func readFile(letter string, taskFile string) string {
+	sf := func(r rune) bool { return !unicode.IsLetter(r) }
 	//read every file and read only the given letter from it
 	//return every word starting with given letter
-	draft, err := os.ReadFile(taskFile)
+	data, err := os.ReadFile(taskFile)
 	if err != nil {
 		fmt.Printf("error while reading file %v", taskFile)
 		return ""
 	}
+	draft := string(data)
+	final := strings.FieldsFunc(draft, sf)
 	//transform []byte to []string and pass it to for loop
-	var final []string
-	for w := range draft {
-		if w[0] == letter {
+
+	for _, w := range final {
+		if string(w[0]) == letter {
 			final = append(final, string(w))
 		}
 	}
+
 	//transform []string to string and return
-	return final
+	return strings.Join(final, " ")
 }
 
 // send an RPC request to the coordinator, wait for the response.
