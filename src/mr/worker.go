@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"sort"
 	"strings"
 	"unicode"
 )
@@ -23,6 +24,14 @@ func ihash(key string) int {
 	h.Write([]byte(key))
 	return int(h.Sum32() & 0x7fffffff)
 }
+
+// for sorting by key.
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 var coordSockName string // socket for coordinator
 
@@ -52,7 +61,34 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			}
 			reportTask(taskID, taskType, outputFileName)
 		} else if taskType == "reduce" {
-			reducef("some key", []string{"value1", "value2"})
+			intermediate := readIntermediate(taskFile)
+			oname := "mr-out-0"
+			ofile, err := os.OpenFile(oname, os.O_CREATE, 0644)
+			if err != nil {
+				log.Fatal("error opening output file:", err)
+			}
+			// call Reduce on each distinct key in intermediate[],
+			// and print the result to mr-out-0.
+
+			i := 0
+			for i < len(intermediate) {
+				j := i + 1
+				for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+					j++
+				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, intermediate[k].Value)
+				}
+				output := reducef(intermediate[i].Key, values)
+
+				// this is the correct format for each line of Reduce output.
+				fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+
+				i = j
+			}
+
+			ofile.Close()
 		}
 	}
 
@@ -123,8 +159,8 @@ func (w *WorkerType) StillWorking(args *WorkerType, reply *WorkerType) error {
 
 func readFile(letter string, taskFile string) string {
 	sf := func(r rune) bool { return !unicode.IsLetter(r) }
-	//read every file and read only the given letter from it
-	//return every word starting with given letter
+	//read the given file and read only the given letter from it
+
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
 		fmt.Printf("error while reading file %v", taskFile)
@@ -132,7 +168,6 @@ func readFile(letter string, taskFile string) string {
 	}
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
-	//transform []byte to []string and pass it to for loop
 
 	for _, w := range final {
 		if string(w[0]) == letter {
@@ -140,8 +175,28 @@ func readFile(letter string, taskFile string) string {
 		}
 	}
 
-	//transform []string to string and return
 	return strings.Join(final, " ")
+}
+
+func readIntermediate(taskFile string) []KeyValue {
+	data, err := os.ReadFile(taskFile)
+	if err != nil {
+		fmt.Printf("error while reading file %v: ", taskFile)
+	}
+
+	draft := string(data)
+	fileContent := strings.Split(draft, " ")
+	toReduce := []KeyValue{}
+	for i, w := range fileContent {
+		if unicode.IsLetter(rune(w[0])) {
+			kv := KeyValue{fileContent[i], fileContent[i+1]}
+			toReduce = append(toReduce, kv)
+		}
+	}
+	// It is required for Map Reduce to sort the intermediate data by key before reduce phase.
+	// Without it, the reduce phase won't work.
+	sort.Sort(ByKey(toReduce))
+	return toReduce
 }
 
 // send an RPC request to the coordinator, wait for the response.
