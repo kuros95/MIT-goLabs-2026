@@ -9,11 +9,17 @@ import (
 	"slices"
 )
 
+var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "f", "G", "g",
+	"H", "h", "I", "i", "J", "j", "K", "k", "L", "l", "M", "m", "N", "n", "O", "o", "P", "p",
+	"Q", "q", "R", "r", "S", "s", "T", "t", "U", "u", "V", "v", "W", "w", "X", "x", "Y", "y",
+	"Z", "z"}
+
 type Coordinator struct {
 	// Your definitions here.
 	isDone        bool
 	filesToMap    []string
 	filesToReduce []string
+	assignedIDs   []string
 	workers       []WorkerType
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 
@@ -122,6 +128,7 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	c.filesToMap = files
+
 	// after mapping one letter throughout all files, combine into one []KeyValue
 	// and write to file to send to Reduce worker.
 
