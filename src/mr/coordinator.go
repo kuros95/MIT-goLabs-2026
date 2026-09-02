@@ -14,10 +14,16 @@ var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "
 	"Q", "q", "R", "r", "S", "s", "T", "t", "U", "u", "V", "v", "W", "w", "X", "x", "Y", "y",
 	"Z", "z"}
 
+type mappedFile struct {
+	name    string
+	letters []string
+}
+
 type Coordinator struct {
 	// Your definitions here.
 	isDone        bool
 	filesToMap    []string
+	mappedFiles   []mappedFile
 	filesToReduce []string
 	assignedIDs   []string
 	workers       []WorkerType
@@ -50,25 +56,31 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	}
 
 	if len(c.filesToReduce) > 0 {
-		// sort intermediate data by key before sending to worker
 		reply.Task.TaskType = "reduce"
-		reply.Task.TaskID = len(c.filesToReduce) - 1
-		reply.Task.Filename = c.filesToReduce[reply.Task.TaskID]
+		reply.Task.TaskID = c.filesToReduce[len(c.filesToReduce)-1][6:7]
+		reply.Task.Filename = c.filesToReduce[len(c.filesToReduce)-1]
 	} else if len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "map"
 		isProcessed := false
+		//needs fix
 		for f := range c.filesToMap {
 			for w := range c.workers {
 				if c.workers[w].Task.Filename == c.filesToMap[f] {
-					isProcessed = true
-					break
+					for l := range alphabet {
+						if c.workers[w].Task.TaskID == alphabet[l] {
+							isProcessed = true
+							break
+						}
+					}
+					if !isProcessed {
+						reply.Task.TaskID = alphabet[l]
+						reply.Task.Filename = c.filesToMap[f]
+						break
+					}
 				}
-			}
-			if !isProcessed {
-				reply.Task.TaskID = slices.Index(c.filesToMap, c.filesToMap[f])
+
 			}
 		}
-		reply.Task.Filename = c.filesToMap[reply.Task.TaskID]
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "done"
 	}

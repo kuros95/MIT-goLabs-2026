@@ -179,8 +179,8 @@ func readFile(letter string, taskFile string) string {
 	final := strings.FieldsFunc(draft, sf)
 
 	for _, w := range final {
-		if string(w[0]) == letter {
-			final = append(final, string(w))
+		if w[0:1] == letter {
+			final = append(final, w)
 		}
 	}
 
@@ -197,7 +197,7 @@ func readIntermediate(taskFile string) []KeyValue {
 	fileContent := strings.Split(draft, " ")
 	toReduce := []KeyValue{}
 	for i, w := range fileContent {
-		if unicode.IsLetter(rune(w[0])) {
+		if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
 			kv := KeyValue{fileContent[i], fileContent[i+1]}
 			toReduce = append(toReduce, kv)
 		}
