@@ -59,28 +59,17 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.TaskType = "reduce"
 		reply.Task.TaskID = c.filesToReduce[len(c.filesToReduce)-1][6:7]
 		reply.Task.Filename = c.filesToReduce[len(c.filesToReduce)-1]
+
 	} else if len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "map"
-		isProcessed := false
-		//needs fix
-		for f := range c.filesToMap {
-			for w := range c.workers {
-				if c.workers[w].Task.Filename == c.filesToMap[f] {
-					for l := range alphabet {
-						if c.workers[w].Task.TaskID == alphabet[l] {
-							isProcessed = true
-							break
-						}
-					}
-					if !isProcessed {
-						reply.Task.TaskID = alphabet[l]
-						reply.Task.Filename = c.filesToMap[f]
-						break
-					}
-				}
+		reply.Task.Filename = c.filesToMap[0]
 
+		for _, f := range c.mappedFiles {
+			if f.name == c.filesToMap[0] && len(f.letters) < len(alphabet) {
+				reply.Task.TaskID = alphabet[len(f.letters)]
 			}
 		}
+
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "done"
 	}
@@ -140,6 +129,12 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	c.filesToMap = files
+	c.mappedFiles = func() []mappedFile {
+		for _, f := range files {
+			c.mappedFiles = append(c.mappedFiles, mappedFile{f, []string{}})
+		}
+		return c.mappedFiles
+	}()
 
 	// after mapping one letter throughout all files, combine into one []KeyValue
 	// and write to file to send to Reduce worker.
