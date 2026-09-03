@@ -25,10 +25,8 @@ type Coordinator struct {
 	filesToMap    []string
 	mappedFiles   []mappedFile
 	filesToReduce []string
-	assignedIDs   []string
 	workers       []WorkerType
 	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
-
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -140,6 +138,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	// and write to file to send to Reduce worker.
 
 	// Your code here.
+	// Consider 2 goroutines: one for sending StillWorking() and one for listening to tasks from workers.
 
 	c.server(sockname)
 	return &c

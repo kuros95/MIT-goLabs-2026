@@ -42,6 +42,8 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	coordSockName = sockname
 
 	// Your worker implementation here.
+	// Worker needs its own listener to receive StillWorking()
+	// So 2 goroutines are needed: one for listening to StillWorking() and one for requesting tasks from coordinator.
 
 	for {
 
