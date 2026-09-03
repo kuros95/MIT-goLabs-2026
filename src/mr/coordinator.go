@@ -65,7 +65,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.Filename = c.filesToMap[0]
 
 		for _, f := range c.mappedFiles {
-			if f.name == c.filesToMap[0] && len(f.letters) < len(alphabet) {
+			if f.name == reply.Task.Filename && len(f.letters) < len(alphabet) {
 				reply.Task.TaskID = alphabet[len(f.letters)]
 			}
 		}
@@ -79,21 +79,20 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
-	// Set task status to waiting, so that worker ID is preserved.
 	if args.Task.TaskType == "map" {
-		c.filesToMap = slices.Delete(c.filesToMap, args.Task.TaskID, args.Task.TaskID+1)
+		for _, m := range c.mappedFiles {
+			if args.Task.Filename == m.name && len(m.letters) == len(alphabet) {
+				c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
+			}
+		}
 		c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
 	} else if args.Task.TaskType == "reduce" {
-		c.filesToReduce = slices.Delete(c.filesToReduce, args.Task.TaskID, args.Task.TaskID+1)
+		index := slices.Index(c.filesToReduce, args.Task.Filename)
+		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 	}
 
-	for w := range c.workers {
-		if c.workers[w].Task.TaskID == args.Task.TaskID {
-			c.workers[w].Task.TaskType = "waiting"
-		}
-	}
 	reply.Task.TaskType = "waiting"
-
+	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType
 	return nil
 }
 

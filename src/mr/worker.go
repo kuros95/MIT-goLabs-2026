@@ -140,7 +140,7 @@ func getTask() (string, string, string) {
 	reply := Task{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %d received task: %v\n", reply.TaskID, reply.TaskType)
+		fmt.Printf("worker %v received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
@@ -153,7 +153,7 @@ func reportTask(taskID string, taskType string, taskFile string) string {
 	reply := Task{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %d reported task: %v\n", args.TaskID, args.TaskType)
+		fmt.Printf("worker %v reported task: %v\n", args.TaskID, args.TaskType)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
