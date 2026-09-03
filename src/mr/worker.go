@@ -59,6 +59,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			if err != nil {
 				log.Fatal("error opening output file:", err)
 			}
+			defer ofile.Close()
 			for i := range intermediate {
 				_, err := fmt.Fprintf(ofile, "%v %v \n", intermediate[i].Key, intermediate[i].Value)
 				if err != nil {
@@ -73,6 +74,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			if err != nil {
 				log.Fatal("error opening output file:", err)
 			}
+			defer ofile.Close()
 			// call Reduce on each distinct key in intermediate[],
 			// and print the result to mr-out-0.
 
@@ -96,7 +98,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 				i = j
 			}
-			ofile.Close()
 			reportTask(taskID, taskType, ofile.Name())
 		}
 	}
