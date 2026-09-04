@@ -77,7 +77,8 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
-	if args.Task.TaskType == "map" {
+	switch args.Task.TaskType {
+	case "map":
 		for _, m := range c.mappedFiles {
 			if args.Task.Filename == m.name && len(m.letters) == len(alphabet) {
 				c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
@@ -85,7 +86,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 			}
 		}
 
-	} else if args.Task.TaskType == "reduce" {
+	case "reduce":
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
 		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 	}
