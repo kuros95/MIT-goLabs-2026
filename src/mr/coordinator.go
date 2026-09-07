@@ -139,6 +139,8 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 
 	// Your code here.
 	// Consider 2 goroutines: one for sending StillWorking() and one for listening to tasks from workers.
+	// Also needs to handle worker failure. Some way to remember the assigned tasks and check for completion.
+	// If task fails to report, consider it failed and reassign.
 
 	c.server(sockname)
 	return &c
