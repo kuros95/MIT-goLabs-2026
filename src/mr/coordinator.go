@@ -31,6 +31,35 @@ type Coordinator struct {
 
 // Your code here -- RPC handlers for the worker to call.
 
+func call(rpcname string, args interface{}, reply interface{}) bool {
+	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+	c, err := rpc.DialHTTP("unix", coordSockName)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	defer c.Close()
+
+	if err := c.Call(rpcname, args, reply); err == nil {
+		return true
+	}
+	log.Printf("%d: call failed err %v", os.Getpid(), err)
+	return false
+}
+
+func isWorking(worker WorkerType) (int, bool) {
+
+	args := WorkerType{WorkerID: worker.WorkerID}
+	reply := WorkerType{}
+	ok := call("Worker.StillWorking", &args, &reply)
+	if ok {
+		fmt.Printf("worker %v is still working!\n", reply.WorkerID)
+	} else {
+		fmt.Printf("worker %v is not working...\n")
+		return reply.WorkerID, false
+	}
+	return reply.WorkerID, worker.IsWorking
+}
+
 // an example RPC handler.
 //
 // the RPC argument and reply types are defined in rpc.go.
@@ -134,6 +163,14 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 		}
 		return c.mappedFiles
 	}()
+	go func() {
+		for {
+			for w := range c.workers {
+				id, status := isWorking(c.workers[w].WorkerID)
+				
+			}
+		}
+	}
 
 	// after mapping one letter throughout all files, combine into one []KeyValue
 	// and write to file to send to Reduce worker.
