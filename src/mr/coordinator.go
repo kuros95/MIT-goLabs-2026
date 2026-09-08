@@ -30,22 +30,6 @@ type Coordinator struct {
 }
 
 // Your code here -- RPC handlers for the worker to call.
-
-func call(rpcname string, args interface{}, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	c, err := rpc.DialHTTP("unix", coordSockName)
-	if err != nil {
-		log.Fatal("dialing:", err)
-	}
-	defer c.Close()
-
-	if err := c.Call(rpcname, args, reply); err == nil {
-		return true
-	}
-	log.Printf("%d: call failed err %v", os.Getpid(), err)
-	return false
-}
-
 func isWorking(worker WorkerType) (int, bool) {
 
 	args := WorkerType{WorkerID: worker.WorkerID}
