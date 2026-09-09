@@ -8,6 +8,7 @@ import (
 	"net/rpc"
 	"os"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -56,7 +57,6 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	// TaskID is the letter for which worker is generating intermediate data.
-	//
 	found := false
 	for w := range c.workers {
 		if c.workers[w].WorkerID == args.WorkerID {
@@ -148,6 +148,7 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
+	m := sync.Mutex{}
 	c.filesToMap = files
 	c.mappedFiles = func() []mappedFile {
 		for _, f := range files {
@@ -162,17 +163,19 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	// If task fails to report, consider it failed and reassign.
 
 	c.server(sockname)
-	go func() {
+	go func(m *sync.Mutex) {
 		for {
 			for w := range c.workers {
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
 					reassigned := reassign(c.workers[w])
 					// sync.Mutex.Lock() <- use this to lock the worker var
 					// so it can read properly during task report.
+					m.Lock()
 					c.workers[w].IsReassigned = reassigned
+					m.Unlock()
 				}
 			}
 		}
-	}()
+	}(&m)
 	return &c
 }
