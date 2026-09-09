@@ -40,78 +40,77 @@ var coordSockName string // socket for coordinator
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-	w := WorkerType{WorkerID: os.Getpid(), IsWorking: true}
+	w := WorkerType{WorkerID: os.Getpid(), IsReassigned: false}
 	coordSockName = sockname
 
 	// Your worker implementation here.
 	// Worker needs its own listener to receive StillWorking()
 	// So 2 goroutines are needed: one for listening to StillWorking() and one for requesting tasks from coordinator.
+	// and a channel to pass around the reassigned status.
 	w.server(coordSockName)
 
-	go func() {
-		for {
-			taskID, taskType, taskFile := getTask()
+	for {
+		taskID, taskType, taskFile := getTask()
 
-			if taskType == "done" {
-				break
-			} else if taskType == "waiting" {
-				continue
-			} else if taskType == "map" {
-				contents := readFile(taskID, taskFile)
-				intermediate := mapf(taskFile, contents)
+		if taskType == "done" {
+			break
+		} else if taskType == "waiting" {
+			continue
+		} else if taskType == "map" {
+			contents := readFile(taskID, taskFile)
+			intermediate := mapf(taskFile, contents)
 
-				ofile, err := os.OpenFile("m-out-"+taskID, os.O_CREATE, 0644)
-				if err != nil {
-					log.Fatal("error opening output file:", err)
-				}
-				defer ofile.Close()
-				for i := range intermediate {
-					_, err := fmt.Fprintf(ofile, "%v %v \n", intermediate[i].Key, intermediate[i].Value)
-					if err != nil {
-						fmt.Printf("error while writing to file %v", ofile.Name())
-					}
-				}
-				reportTask(taskID, taskType, ofile.Name())
-			} else if taskType == "reduce" {
-				intermediate := readIntermediate(taskFile)
-				oname := "mr-out-0"
-				ofile, err := os.OpenFile(oname, os.O_CREATE, 0644)
-				if err != nil {
-					log.Fatal("error opening output file:", err)
-				}
-				defer ofile.Close()
-				// call Reduce on each distinct key in intermediate[],
-				// and print the result to mr-out-0.
-
-				i := 0
-				for i < len(intermediate) {
-					j := i + 1
-					for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
-						j++
-					}
-					values := []string{}
-					for k := i; k < j; k++ {
-						values = append(values, intermediate[k].Value)
-					}
-					output := reducef(intermediate[i].Key, values)
-
-					// this is the correct format for each line of Reduce output.
-					_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
-					if err != nil {
-						fmt.Printf("error while writing to file %v", ofile.Name())
-					}
-
-					i = j
-				}
-				reportTask(taskID, taskType, ofile.Name())
+			ofile, err := os.OpenFile("m-out-"+taskID, os.O_CREATE, 0644)
+			if err != nil {
+				log.Fatal("error opening output file:", err)
 			}
+			defer ofile.Close()
+			for i := range intermediate {
+				_, err := fmt.Fprintf(ofile, "%v %v \n", intermediate[i].Key, intermediate[i].Value)
+				if err != nil {
+					fmt.Printf("error while writing to file %v", ofile.Name())
+				}
+			}
+			reportTask(taskID, taskType, ofile.Name())
+		} else if taskType == "reduce" {
+			intermediate := readIntermediate(taskFile)
+			oname := "mr-out-0"
+			ofile, err := os.OpenFile(oname, os.O_CREATE, 0644)
+			if err != nil {
+				log.Fatal("error opening output file:", err)
+			}
+			defer ofile.Close()
+			// call Reduce on each distinct key in intermediate[],
+			// and print the result to mr-out-0.
+
+			i := 0
+			for i < len(intermediate) {
+				j := i + 1
+				for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+					j++
+				}
+				values := []string{}
+				for k := i; k < j; k++ {
+					values = append(values, intermediate[k].Value)
+				}
+				output := reducef(intermediate[i].Key, values)
+
+				// this is the correct format for each line of Reduce output.
+				_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+				if err != nil {
+					fmt.Printf("error while writing to file %v", ofile.Name())
+				}
+
+				i = j
+			}
+			reportTask(taskID, taskType, ofile.Name())
 		}
-	}()
+	}
 
 	// answer when called if working
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
-
+	fmt.Printf("worker %v terminating after job well done...", os.Getpid())
 }
 
 // example function to show how to make an RPC call to the coordinator.
@@ -143,7 +142,7 @@ func CallExample() {
 
 func getTask() (string, string, string) {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsWorking: true}
+	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false}
 	reply := Task{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
@@ -167,9 +166,9 @@ func reportTask(taskID string, taskType string, taskFile string) string {
 	return reply.TaskType
 }
 
-func (w *WorkerType) StillWorking(args *WorkerType, reply *WorkerType) error {
-	w.IsWorking = true
-	reply.IsWorking = true
+func (w *WorkerType) Reassign(args *WorkerType, reply *WorkerType) error {
+	w.IsReassigned = true
+	reply.IsReassigned = true
 	return nil
 }
 

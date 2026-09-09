@@ -1,12 +1,14 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
 	"slices"
+	"time"
 )
 
 var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "f", "G", "g",
@@ -30,18 +32,18 @@ type Coordinator struct {
 }
 
 // Your code here -- RPC handlers for the worker to call.
-func isWorking(worker WorkerType) (int, bool) {
+func reassign(worker WorkerType) bool {
 
 	args := WorkerType{WorkerID: worker.WorkerID}
 	reply := WorkerType{}
-	ok := call("Worker.StillWorking", &args, &reply)
+	ok := call("Worker.Reassign", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v is still working!\n", reply.WorkerID)
+		fmt.Printf("task of worker %v has been reassigned!\n", reply.WorkerID)
 	} else {
-		fmt.Printf("worker %v is not working...\n")
-		return reply.WorkerID, false
+		fmt.Printf("worker %v is not working...\n", reply.WorkerID)
+		return true
 	}
-	return reply.WorkerID, worker.IsWorking
+	return worker.IsReassigned
 }
 
 // an example RPC handler.
@@ -84,12 +86,18 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	} else if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "done"
 	}
+	reply.TimeStamp = time.Now()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
-
+	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
 	return nil
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
+	if c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].IsReassigned == true {
+		reply.Task.TaskType = "waiting"
+		c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType
+		return nil
+	}
 	switch args.Task.TaskType {
 	case "map":
 		for _, m := range c.mappedFiles {
@@ -147,17 +155,6 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 		}
 		return c.mappedFiles
 	}()
-	go func() {
-		for {
-			for w := range c.workers {
-				id, status := isWorking(c.workers[w].WorkerID)
-				
-			}
-		}
-	}
-
-	// after mapping one letter throughout all files, combine into one []KeyValue
-	// and write to file to send to Reduce worker.
 
 	// Your code here.
 	// Consider 2 goroutines: one for sending StillWorking() and one for listening to tasks from workers.
@@ -165,5 +162,17 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	// If task fails to report, consider it failed and reassign.
 
 	c.server(sockname)
+	go func() {
+		for {
+			for w := range c.workers {
+				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
+					reassigned := reassign(c.workers[w])
+					// sync.Mutex.Lock() <- use this to lock the worker var
+					// so it can read properly during task report.
+					c.workers[w].IsReassigned = reassigned
+				}
+			}
+		}
+	}()
 	return &c
 }

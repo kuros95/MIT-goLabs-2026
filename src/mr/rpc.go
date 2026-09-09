@@ -1,5 +1,7 @@
 package mr
 
+import "time"
+
 //
 // RPC definitions.
 //
@@ -26,9 +28,10 @@ type Task struct {
 }
 
 type WorkerType struct {
-	WorkerID  int
-	IsWorking bool
-	Task      Task
+	WorkerID     int
+	IsReassigned bool
+	Task         Task
+	TimeStamp    time.Time
 }
 
 // Add your RPC definitions here.
