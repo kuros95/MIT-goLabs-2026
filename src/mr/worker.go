@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"unicode"
@@ -59,8 +60,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 		} else if taskType == "map" {
 			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
-
-			ofile, err := os.OpenFile("m-out-"+taskID, os.O_CREATE, 0644)
+			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE, 0644)
 			if err != nil {
 				log.Fatal("error opening output file:", err)
 			}
@@ -204,19 +204,26 @@ func readFile(letter string, taskFile string) string {
 	return strings.Join(final, " ")
 }
 
-func readIntermediate(taskFile string) []KeyValue {
-	data, err := os.ReadFile(taskFile)
-	if err != nil {
-		fmt.Printf("error while reading file %v: ", taskFile)
-	}
-
-	draft := string(data)
-	fileContent := strings.Split(draft, " ")
+func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
-	for i, w := range fileContent {
-		if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
-			kv := KeyValue{fileContent[i], fileContent[i+1]}
-			toReduce = append(toReduce, kv)
+	files, err := exec.Command("ls", "m-out-"+taskID+"-*").Output()
+	if err != nil {
+		fmt.Printf("error while reading intermediate files for letter %v", taskID)
+	}
+	filesList := strings.Split(string(files), " ")
+	for _, file := range filesList {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			fmt.Printf("error while reading file %v: ", file)
+		}
+
+		draft := string(data)
+		fileContent := strings.Split(draft, " ")
+		for i, w := range fileContent {
+			if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
+				kv := KeyValue{fileContent[i], fileContent[i+1]}
+				toReduce = append(toReduce, kv)
+			}
 		}
 	}
 	// It is required for Map Reduce to sort the intermediate data by key before reduce phase.

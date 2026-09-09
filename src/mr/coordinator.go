@@ -158,9 +158,6 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	}()
 
 	// Your code here.
-	// Consider 2 goroutines: one for sending StillWorking() and one for listening to tasks from workers.
-	// Also needs to handle worker failure. Some way to remember the assigned tasks and check for completion.
-	// If task fails to report, consider it failed and reassign.
 
 	c.server(sockname)
 	go func(m *sync.Mutex) {
@@ -168,8 +165,6 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 			for w := range c.workers {
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
 					reassigned := reassign(c.workers[w])
-					// sync.Mutex.Lock() <- use this to lock the worker var
-					// so it can read properly during task report.
 					m.Lock()
 					c.workers[w].IsReassigned = reassigned
 					m.Unlock()
