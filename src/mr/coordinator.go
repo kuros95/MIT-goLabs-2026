@@ -158,6 +158,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	}()
 
 	// Your code here.
+	// TODO: Add info prints
 
 	c.server(sockname)
 	go func(m *sync.Mutex) {
