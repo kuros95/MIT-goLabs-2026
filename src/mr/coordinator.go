@@ -33,19 +33,6 @@ type Coordinator struct {
 }
 
 // Your code here -- RPC handlers for the worker to call.
-func reassign(worker WorkerType) bool {
-
-	args := WorkerType{WorkerID: worker.WorkerID}
-	reply := WorkerType{}
-	ok := call("Worker.Reassign", &args, &reply)
-	if ok {
-		fmt.Printf("task of worker %v has been reassigned!\n", reply.WorkerID)
-	} else {
-		fmt.Printf("worker %v is not working...\n", reply.WorkerID)
-		return true
-	}
-	return worker.IsReassigned
-}
 
 // an example RPC handler.
 //
@@ -161,13 +148,14 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	// TODO: Add info prints
 
 	c.server(sockname)
+	fmt.Printf("Coordinator is listening on %v, waiting for workers to connect...\n", sockname)
 	go func(m *sync.Mutex) {
+		fmt.Printf("Coordinator is running, waiting for workers to connect...\n")
 		for {
 			for w := range c.workers {
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
-					reassigned := reassign(c.workers[w])
 					m.Lock()
-					c.workers[w].IsReassigned = reassigned
+					c.workers[w].IsReassigned = true
 					m.Unlock()
 				}
 			}

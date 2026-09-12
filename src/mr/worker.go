@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log"
-	"net"
-	"net/http"
 	"net/rpc"
 	"os"
 	"os/exec"
@@ -41,14 +39,12 @@ var coordSockName string // socket for coordinator
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-	w := WorkerType{WorkerID: os.Getpid(), IsReassigned: false}
 	coordSockName = sockname
 
 	// Your worker implementation here.
 	// Worker needs its own listener to receive StillWorking()
 	// So 2 goroutines are needed: one for listening to StillWorking() and one for requesting tasks from coordinator.
 	// and a channel to pass around the reassigned status.
-	w.server(coordSockName)
 
 	for {
 		taskID, taskType, taskFile := getTask()
@@ -145,6 +141,7 @@ func getTask() (string, string, string) {
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false}
 	reply := Task{}
 	ok := call("Coordinator.GetTask", &args, &reply)
+	fmt.Printf("call args %v \ncall result: %v\n", &args, ok)
 	if ok {
 		fmt.Printf("worker %v received task: %v\n", reply.TaskID, reply.TaskType)
 	} else {
@@ -164,23 +161,6 @@ func reportTask(taskID string, taskType string, taskFile string) string {
 		fmt.Printf("task report failed!\n")
 	}
 	return reply.TaskType
-}
-
-func (w *WorkerType) Reassign(args *WorkerType, reply *WorkerType) error {
-	w.IsReassigned = true
-	reply.IsReassigned = true
-	return nil
-}
-
-func (w *WorkerType) server(sockname string) {
-	rpc.Register(w)
-	rpc.HandleHTTP()
-	os.Remove(sockname)
-	l, err := net.Listen("unix", sockname)
-	if err != nil {
-		log.Fatalf("listen error %s: %v", sockname, err)
-	}
-	go http.Serve(l, nil)
 }
 
 func readFile(letter string, taskFile string) string {
@@ -242,10 +222,12 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 		log.Fatal("dialing:", err)
 	}
 	defer c.Close()
-
-	if err := c.Call(rpcname, args, reply); err == nil {
+	fmt.Printf("coordSockName: %v\n", coordSockName)
+	fmt.Printf("worker %v is calling %v, using rpcname: %v, args: %v, reply: %v\n\n", os.Getpid(), &c, rpcname, args, reply)
+	if err = c.Call(rpcname, args, reply); err == nil {
 		return true
 	}
+
 	log.Printf("%d: call failed err %v", os.Getpid(), err)
 	return false
 }
