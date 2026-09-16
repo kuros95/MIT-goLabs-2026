@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -48,7 +49,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 	for {
 		taskID, taskType, taskFile := getTask()
-
+		time.Sleep(1 * time.Second)
 		if taskType == "done" {
 			break
 		} else if taskType == "waiting" {
@@ -56,7 +57,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 		} else if taskType == "map" {
 			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
-			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE, 0644)
+			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatal("error opening output file:", err)
 			}
@@ -64,7 +65,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			for i := range intermediate {
 				_, err := fmt.Fprintf(ofile, "%v %v \n", intermediate[i].Key, intermediate[i].Value)
 				if err != nil {
-					fmt.Printf("error while writing to file %v", ofile.Name())
+					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 			}
 			reportTask(taskID, taskType, ofile.Name())
@@ -94,7 +95,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 				// this is the correct format for each line of Reduce output.
 				_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
 				if err != nil {
-					fmt.Printf("error while writing to file %v", ofile.Name())
+					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 
 				i = j
@@ -139,28 +140,28 @@ func CallExample() {
 func getTask() (string, string, string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false}
-	reply := Task{}
+	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	fmt.Printf("call args %v \ncall result: %v\n", &args, ok)
 	if ok {
-		fmt.Printf("worker %v received task: %v\n", reply.TaskID, reply.TaskType)
+		fmt.Printf("worker %v received task: %v\n", reply.Task.TaskID, reply.Task.TaskType)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
-	return reply.TaskID, reply.TaskType, reply.Filename
+	return reply.Task.TaskID, reply.Task.TaskType, reply.Task.Filename
 }
 
 func reportTask(taskID string, taskType string, taskFile string) string {
 
-	args := Task{TaskID: taskID, TaskType: taskType, Filename: taskFile}
-	reply := Task{}
+	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{TaskID: taskID, TaskType: taskType, Filename: taskFile}}
+	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v\n", args.TaskID, args.TaskType)
+		fmt.Printf("worker %v reported task: %v\n", args.Task.TaskID, args.Task.TaskType)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
-	return reply.TaskType
+	return reply.Task.TaskType
 }
 
 func readFile(letter string, taskFile string) string {
@@ -169,7 +170,7 @@ func readFile(letter string, taskFile string) string {
 
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
-		fmt.Printf("error while reading file %v", taskFile)
+		fmt.Printf("error while reading file %v: %v\n", taskFile, err)
 		return ""
 	}
 	draft := string(data)
@@ -188,13 +189,13 @@ func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
 	files, err := exec.Command("ls", "m-out-"+taskID+"-*").Output()
 	if err != nil {
-		fmt.Printf("error while reading intermediate files for letter %v", taskID)
+		fmt.Printf("error while reading intermediate files for letter %v: %v\n", taskID, err)
 	}
 	filesList := strings.Split(string(files), " ")
 	for _, file := range filesList {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			fmt.Printf("error while reading file %v: ", file)
+			fmt.Printf("error while reading file %v: %v\n", file, err)
 		}
 
 		draft := string(data)
@@ -227,7 +228,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	if err = c.Call(rpcname, args, reply); err == nil {
 		return true
 	}
-
-	log.Printf("%d: call failed err %v", os.Getpid(), err)
+	log.Printf("%d: call failed err %v", os.Getpid(), err.Error())
 	return false
 }
