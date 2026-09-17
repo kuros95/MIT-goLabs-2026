@@ -53,6 +53,10 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	}
 	if !found {
 		c.workers = append(c.workers, *args)
+		fmt.Printf("found a new worker! %v\n", args.WorkerID)
+	}
+	if found {
+		fmt.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
 	if len(c.filesToReduce) > 0 {
@@ -76,21 +80,37 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	reply.TimeStamp = time.Now()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
+	fmt.Printf("worker status: %v\n", c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })])
+	fmt.Printf("worker %v has been given task: type: %v, file: %v, letter: %v at %v\n", args.WorkerID, reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID, reply.TimeStamp)
 	return nil
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
+	fmt.Printf("reporting task %v from worker %v for file %v and letter %v\n", args.Task.TaskType, args.WorkerID, args.Task.Filename, args.Task.TaskID)
 	if c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].IsReassigned == true {
 		reply.Task.TaskType = "waiting"
 		c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType
+		fmt.Printf("task %v for file %v and letter %v has already been reassigned...\n", args.Task.TaskType, args.Task.Filename, args.Task.TaskID)
 		return nil
 	}
+
+	fmt.Printf("status of mapped files and letters: %v\n", c.mappedFiles)
+	fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
+	fmt.Printf("will now check for file %v...\n", args.Task.Filename[8:])
 	switch args.Task.TaskType {
 	case "map":
-		for _, m := range c.mappedFiles {
-			if args.Task.Filename == m.name && len(m.letters) == len(alphabet) {
+		fmt.Println("checking for file in mappedFiles...")
+		for i, m := range c.mappedFiles {
+			fmt.Printf("checking if %v is equal to %v\n", args.Task.Filename[8:], m.name)
+			if args.Task.Filename[8:] == m.name && len(m.letters) < len(alphabet) {
+				fmt.Println("found!")
+				c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+				c.mappedFiles[i].letters = append(c.mappedFiles[i].letters, args.Task.TaskID)
+			} else if args.Task.Filename[8:] == m.name && len(m.letters) == len(alphabet) {
+				fmt.Println("found!")
 				c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
 				c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+				c.mappedFiles[i].letters = append(c.mappedFiles[i].letters, args.Task.TaskID)
 			}
 		}
 
@@ -101,6 +121,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 
 	reply.Task.TaskType = "waiting"
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType
+	fmt.Printf("task %v for file %v has been reported; setting worker %v to waiting...\n\n", args.Task.TaskType, args.Task.Filename, args.WorkerID)
 	return nil
 }
 
@@ -111,7 +132,7 @@ func (c *Coordinator) server(sockname string) {
 	os.Remove(sockname)
 	l, e := net.Listen("unix", sockname)
 	if e != nil {
-		log.Fatalf("listen error %s: %v", sockname, e)
+		log.Fatalf("listen error %s: %v\n", sockname, e)
 	}
 	go http.Serve(l, nil)
 }
@@ -143,6 +164,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 		}
 		return c.mappedFiles
 	}()
+	fmt.Printf("coordinator working with files: %v\n", files)
 
 	// Your code here.
 	// TODO: Add info prints
@@ -150,7 +172,6 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c.server(sockname)
 	fmt.Printf("Coordinator is listening on %v, waiting for workers to connect...\n", sockname)
 	go func(m *sync.Mutex) {
-		fmt.Printf("Coordinator is running, waiting for workers to connect...\n")
 		for {
 			for w := range c.workers {
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
