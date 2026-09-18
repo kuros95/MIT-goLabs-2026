@@ -94,6 +94,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 	}
 
+	fmt.Printf("status of files to map: %v\n", c.filesToMap)
 	fmt.Printf("status of mapped files and letters: %v\n", c.mappedFiles)
 	fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
 	fmt.Printf("will now check for file %v...\n", args.Task.Filename[8:])
@@ -116,6 +117,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 
 	case "reduce":
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
+		fmt.Printf("file %v is at index %v\n", args.Task.Filename, index)
 		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 	}
 

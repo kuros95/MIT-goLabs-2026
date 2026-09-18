@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/rpc"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -49,7 +49,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 	for {
 		taskID, taskType, taskFile := getTask()
-		time.Sleep(1 * time.Second)
 		if taskType == "done" {
 			break
 		} else if taskType == "waiting" {
@@ -75,7 +74,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			fmt.Println("received reduce task")
 			intermediate := readIntermediate(taskID)
 			oname := "mr-out-0"
-			ofile, err := os.OpenFile(oname, os.O_CREATE, 0644)
+			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatal("error opening output file:", err)
 			}
@@ -103,7 +102,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 				i = j
 			}
-			reportTask(taskID, taskType, ofile.Name())
+			reportTask(taskID, taskType, taskFile)
 		}
 	}
 
@@ -145,7 +144,7 @@ func getTask() (string, string, string) {
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
-	fmt.Printf("call args %v \ncall result: %v\n", &args, ok)
+	fmt.Printf("call args %v\ncall result: %v\n", &args, ok)
 	if ok {
 		fmt.Printf("worker %v received task: %v\n", os.Getpid(), reply.Task.TaskType)
 	} else {
@@ -178,26 +177,27 @@ func readFile(letter string, taskFile string) string {
 	}
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
+	toMap := []string{}
 
 	for _, w := range final {
-		//fmt.Printf("looking for words starting with %v in %v\n", letter, taskFile)
 		if w[0:1] == letter {
-			final = append(final, w)
+			toMap = append(toMap, w)
 		}
 	}
 
-	return strings.Join(final, " ")
+	return strings.Join(toMap, " ")
 }
 
 func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
-	files, err := exec.Command("sh", "-c", "ls m-out-"+taskID+"-*").Output()
+
+	files, err := filepath.Glob("m-out-" + taskID + "-*")
 	if err != nil {
-		fmt.Printf("error while reading intermediate files %v for letter %v: %v\n", string(files), taskID, err)
+		fmt.Printf("error finding intermediate files: %v\n", err)
+		return toReduce
 	}
-	filesList := strings.Split(string(files), " ")
-	fmt.Printf("files to read from %v\n", filesList)
-	for _, file := range filesList {
+
+	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Printf("error while reading file %v: %v\n", file, err)
