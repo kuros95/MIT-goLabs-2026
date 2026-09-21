@@ -55,7 +55,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			fmt.Println("waiting for next task...")
 			continue
 		} else if taskType == "map" {
-			fmt.Println("received map task")
 			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
 			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
@@ -71,7 +70,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			}
 			reportTask(taskID, taskType, ofile.Name())
 		} else if taskType == "reduce" {
-			fmt.Println("received reduce task")
 			intermediate := readIntermediate(taskID)
 			oname := "mr-out-0"
 			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
@@ -93,6 +91,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 					values = append(values, intermediate[k].Value)
 				}
 				output := reducef(intermediate[i].Key, values)
+				fmt.Printf("len of output to mr-out-0: \n", len(output))
 
 				// this is the correct format for each line of Reduce output.
 				_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
@@ -109,7 +108,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	// answer when called if working
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
-	fmt.Printf("worker %v terminating after job well done...", os.Getpid())
+	fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
 }
 
 // example function to show how to make an RPC call to the coordinator.
@@ -144,9 +143,8 @@ func getTask() (string, string, string) {
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
-	fmt.Printf("call args %v\ncall result: %v\n", &args, ok)
 	if ok {
-		fmt.Printf("worker %v received task: %v\n", os.Getpid(), reply.Task.TaskType)
+		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
@@ -159,7 +157,7 @@ func reportTask(taskID string, taskType string, taskFile string) string {
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v\n", args.Task.TaskID, args.Task.TaskType)
+		fmt.Printf("worker %v reported task: %v for file %v on letter %v\n\n", os.Getpid(), taskType, taskFile, taskID)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
@@ -202,6 +200,9 @@ func readIntermediate(taskID string) []KeyValue {
 		if err != nil {
 			fmt.Printf("error while reading file %v: %v\n", file, err)
 		}
+		if len(data) == 0 {
+			continue
+		}
 
 		draft := string(data)
 		fileContent := strings.Split(draft, " ")
@@ -228,8 +229,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 		log.Fatal("dialing:", err)
 	}
 	defer c.Close()
-	fmt.Printf("coordSockName: %v\n", coordSockName)
-	fmt.Printf("worker %v is calling %v, using rpcname: %v, args: %v, reply: %v\n\n", os.Getpid(), &c, rpcname, args, reply)
+
 	if err = c.Call(rpcname, args, reply); err == nil {
 		return true
 	}
