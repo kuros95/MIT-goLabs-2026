@@ -63,7 +63,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			}
 			defer ofile.Close()
 			for i := range intermediate {
-				_, err := fmt.Fprintf(ofile, "%v %v \n", intermediate[i].Key, intermediate[i].Value)
+				_, err := fmt.Fprintf(ofile, "%v %v ", intermediate[i].Key, intermediate[i].Value)
 				if err != nil {
 					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
@@ -91,7 +91,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 					values = append(values, intermediate[k].Value)
 				}
 				output := reducef(intermediate[i].Key, values)
-				fmt.Printf("len of output to mr-out-0: \n", len(output))
 
 				// this is the correct format for each line of Reduce output.
 				_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
@@ -206,9 +205,17 @@ func readIntermediate(taskID string) []KeyValue {
 
 		draft := string(data)
 		fileContent := strings.Split(draft, " ")
-		for i, w := range fileContent {
-			if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
-				kv := KeyValue{fileContent[i], fileContent[i+1]}
+		// for i, w := range fileContent {
+		// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
+		// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
+		// 		toReduce = append(toReduce, kv)
+		// 	}
+		// }
+		for i := 0; i < len(fileContent)-1; i += 2 {
+			k := fileContent[i]
+			v := fileContent[i+1]
+			if unicode.IsLetter(rune(k[0])) && 0 < len(k) {
+				kv := KeyValue{k, v}
 				toReduce = append(toReduce, kv)
 			}
 		}
