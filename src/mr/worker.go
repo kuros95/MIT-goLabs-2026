@@ -43,23 +43,23 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 	coordSockName = sockname
 
 	// Your worker implementation here.
-	// Worker needs its own listener to receive StillWorking()
-	// So 2 goroutines are needed: one for listening to StillWorking() and one for requesting tasks from coordinator.
-	// and a channel to pass around the reassigned status.
 
+mainLoop:
 	for {
 		taskID, taskType, taskFile := getTask()
-		if taskType == "done" {
-			break
-		} else if taskType == "waiting" {
+		switch taskType {
+		case "done":
+			fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
+			break mainLoop
+		case "waiting":
 			fmt.Println("waiting for next task...")
 			continue
-		} else if taskType == "map" {
+		case "map":
 			contents := readFile(taskID, taskFile)
 			intermediate := mapf(taskFile, contents)
 			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatal("error opening output file:", err)
+				log.Fatalf("error: %v file: %v", err, taskFile)
 			}
 			defer ofile.Close()
 			for i := range intermediate {
@@ -69,12 +69,23 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 				}
 			}
 			reportTask(taskID, taskType, ofile.Name())
-		} else if taskType == "reduce" {
-			intermediate := readIntermediate(taskID)
-			oname := "mr-out-0"
-			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
+		case "reduce":
+
+			var oname, prefix string
+			switch taskFile[:2] {
+			case "m-":
+				oname = "mr-out-" + taskFile[8:]
+				prefix = "m-out-"
+			case "mr":
+				oname = "mr-out-0"
+				prefix = "mr-out-"
+			}
+
+			intermediate := readIntermediate(prefix, taskID)
+			fmt.Printf("working on file: %v\n", oname)
+			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatal("error opening output file:", err)
+				log.Fatalf("error: %v file: %v", err, taskFile)
 			}
 			defer ofile.Close()
 			// call Reduce on each distinct key in intermediate[],
@@ -91,9 +102,17 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 					values = append(values, intermediate[k].Value)
 				}
 				output := reducef(intermediate[i].Key, values)
+				var toWrite string
+				switch taskFile[:2] {
+				case "m-":
+					toWrite = fmt.Sprintf("%v %v ", intermediate[i].Key, output)
+				case "mr":
+					fmt.Printf("wiritng %v to file %v\n", output, ofile.Name())
+					toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
+				}
 
 				// this is the correct format for each line of Reduce output.
-				_, err := fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+				_, err := ofile.WriteString(toWrite)
 				if err != nil {
 					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
@@ -102,12 +121,11 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 			}
 			reportTask(taskID, taskType, taskFile)
 		}
-	}
 
-	// answer when called if working
-	// uncomment to send the Example RPC to the coordinator.
-	// CallExample()
-	fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
+		// answer when called if working
+		// uncomment to send the Example RPC to the coordinator.
+		// CallExample()
+	}
 }
 
 // example function to show how to make an RPC call to the coordinator.
@@ -185,10 +203,10 @@ func readFile(letter string, taskFile string) string {
 	return strings.Join(toMap, " ")
 }
 
-func readIntermediate(taskID string) []KeyValue {
+func readIntermediate(prefix, taskID string) []KeyValue {
 	toReduce := []KeyValue{}
 
-	files, err := filepath.Glob("m-out-" + taskID + "-*")
+	files, err := filepath.Glob(prefix + taskID + "-*")
 	if err != nil {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce

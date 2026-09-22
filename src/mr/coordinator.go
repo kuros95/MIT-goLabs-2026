@@ -118,6 +118,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		for _, m := range c.mappedFiles {
 			if args.Task.Filename[8:] == m.name && len(m.letters) == len(alphabet) {
 				c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
+				c.filesToReduce = append(c.filesToReduce, "mr-out-"+args.Task.Filename[8:])
 			}
 		}
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
