@@ -71,14 +71,13 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.Filename = c.filesToReduce[len(c.filesToReduce)-1]
 
 	} else if len(c.filesToReduce) == 0 {
-		reply.Task.TaskType = "map"
 		reply.Task.TaskID = c.lettersToMap[0]
-
 		for _, l := range c.mappedLetters {
 			if l.letter == reply.Task.TaskID && len(l.names) == len(workFiles) {
 				reply.Task.TaskType = "waiting"
 				continue
 			} else if l.letter == reply.Task.TaskID && len(l.names) < len(workFiles) {
+				reply.Task.TaskType = "map"
 				reply.Task.Filename = workFiles[len(l.names)]
 			}
 		}
@@ -88,7 +87,6 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	reply.TimeStamp = time.Now()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
-	fmt.Printf("worker status: %v\n", c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })])
 	fmt.Printf("worker %v has been given task: type: %v, file: %v, letter: %v at %v\n\n", args.WorkerID, reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID, reply.TimeStamp)
 	return nil
 }
@@ -102,28 +100,26 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 	}
 
-	// fmt.Printf("status of files to map: %v\n", c.filesToMap)
-	// fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
-	// fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
 	switch args.Task.TaskType {
 	case "map":
 		for i, m := range c.mappedLetters {
 			if args.Task.TaskID == m.letter && len(m.names) < len(workFiles) {
-				c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
 				c.mappedLetters[i].names = append(c.mappedLetters[i].names, args.Task.Filename[8:])
+				if len(c.mappedLetters[i].names) == len(workFiles) {
+					c.lettersToMap = slices.Delete(c.lettersToMap, 0, 1)
+					c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+				}
 			}
 		}
 
 	case "reduce":
-		for _, m := range c.mappedLetters {
-			if args.Task.TaskID == m.letter && len(m.names) == len(workFiles) {
-				c.lettersToMap = slices.Delete(c.lettersToMap, 0, 1)
-				//c.filesToReduce = append(c.filesToReduce, "mr-out-"+args.Task.Filename[8:])
-			}
-		}
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
 		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 	}
+
+	// fmt.Printf("status of files to map: %v\n", c.filesToMap)
+	// fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
+	// fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
 
 	reply.Task.TaskType = "waiting"
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType

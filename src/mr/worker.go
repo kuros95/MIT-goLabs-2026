@@ -46,6 +46,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
+		//time.Sleep(5 * time.Second)
 		taskID, taskType, taskFile := getTask()
 		switch taskType {
 		case "done":
@@ -195,7 +196,7 @@ func readIntermediate(taskID string) []KeyValue {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
 	}
-
+	fmt.Printf("found files: %v\n", files)
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
