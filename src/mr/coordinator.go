@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -61,7 +62,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		fmt.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
-	if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
+	if len(c.lettersToMap) == 0 && len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "done"
 
 	} else if len(c.filesToReduce) > 0 {
@@ -101,9 +102,9 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 	}
 
-	fmt.Printf("status of files to map: %v\n", c.filesToMap)
-	fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
-	fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
+	// fmt.Printf("status of files to map: %v\n", c.filesToMap)
+	// fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
+	// fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
 	switch args.Task.TaskType {
 	case "map":
 		for i, m := range c.mappedLetters {
@@ -147,10 +148,18 @@ func (c *Coordinator) server(sockname string) {
 func (c *Coordinator) Done() bool {
 	ret := false
 
-	if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
+	if len(c.lettersToMap) == 0 && len(c.filesToReduce) == 0 {
+		fmt.Println("removing intermediate files...")
+		files, err := filepath.Glob("m-out-*")
+		if err != nil {
+			fmt.Printf("error finding intermediate files: %v\n", err)
+		}
+		for _, f := range files {
+			os.Remove(f)
+		}
+
 		ret = true
 	}
-	os.Remove("m-out-*")
 
 	// Your code here.
 
@@ -163,7 +172,7 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	m := sync.Mutex{}
-	slices.Sort(alphabet)
+	//slices.Sort(alphabet)
 	c.filesToMap = files
 	c.lettersToMap = alphabet
 	workFiles = files
@@ -176,10 +185,9 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	fmt.Printf("coordinator working with files: %v\n", files)
 
 	// Your code here.
-	// TODO: Add info prints
 
 	c.server(sockname)
-	fmt.Printf("Coordinator is listening on %v, waiting for workers to connect...\n", sockname)
+	fmt.Printf("coordinator is listening on %v, waiting for workers to connect...\n", sockname)
 	go func(m *sync.Mutex) {
 		for {
 			for w := range c.workers {

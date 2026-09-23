@@ -72,7 +72,7 @@ mainLoop:
 		case "reduce":
 			oname := "mr-out-0"
 			intermediate := readIntermediate(taskID)
-			fmt.Printf("working on file: %v\n", oname)
+			//fmt.Printf("working on file: %v\n", oname)
 			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, taskFile)
@@ -93,7 +93,6 @@ mainLoop:
 				}
 				output := reducef(intermediate[i].Key, values)
 				var toWrite string
-				//fmt.Printf("writng %v to file %v\n", output, ofile.Name())
 
 				// this is the correct format for each line of Reduce output.
 				toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
