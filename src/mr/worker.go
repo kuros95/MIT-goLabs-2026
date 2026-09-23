@@ -70,18 +70,8 @@ mainLoop:
 			}
 			reportTask(taskID, taskType, ofile.Name())
 		case "reduce":
-
-			var oname, prefix string
-			switch taskFile[:2] {
-			case "m-":
-				oname = "mr-out-" + taskFile[8:]
-				prefix = "m-out-"
-			case "mr":
-				oname = "mr-out-0"
-				prefix = "mr-out-"
-			}
-
-			intermediate := readIntermediate(prefix, taskID)
+			oname := "mr-out-0"
+			intermediate := readIntermediate(taskID)
 			fmt.Printf("working on file: %v\n", oname)
 			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -103,15 +93,10 @@ mainLoop:
 				}
 				output := reducef(intermediate[i].Key, values)
 				var toWrite string
-				switch taskFile[:2] {
-				case "m-":
-					toWrite = fmt.Sprintf("%v %v ", intermediate[i].Key, output)
-				case "mr":
-					fmt.Printf("wiritng %v to file %v\n", output, ofile.Name())
-					toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
-				}
+				//fmt.Printf("writng %v to file %v\n", output, ofile.Name())
 
 				// this is the correct format for each line of Reduce output.
+				toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
 				_, err := ofile.WriteString(toWrite)
 				if err != nil {
 					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
@@ -203,10 +188,10 @@ func readFile(letter string, taskFile string) string {
 	return strings.Join(toMap, " ")
 }
 
-func readIntermediate(prefix, taskID string) []KeyValue {
+func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
 
-	files, err := filepath.Glob(prefix + taskID + "-*")
+	files, err := filepath.Glob("m-out-" + taskID + "-*")
 	if err != nil {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce

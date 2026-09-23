@@ -17,19 +17,21 @@ var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "
 	"Q", "q", "R", "r", "S", "s", "T", "t", "U", "u", "V", "v", "W", "w", "X", "x", "Y", "y",
 	"Z", "z"}
 
-type mappedFile struct {
-	name    string
-	letters []string
+var workFiles = []string{}
+
+type mappedLetter struct {
+	letter string
+	names  []string
 }
 
 type Coordinator struct {
 	// Your definitions here.
 	isDone        bool
 	filesToMap    []string
-	mappedFiles   []mappedFile
+	lettersToMap  []string
+	mappedLetters []mappedLetter
 	filesToReduce []string
 	workers       []WorkerType
-	// You can use channels, mutexes, or other synchronization primitives to manage task assignment and completion.
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -69,15 +71,14 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 
 	} else if len(c.filesToReduce) == 0 {
 		reply.Task.TaskType = "map"
-		reply.Task.Filename = c.filesToMap[0]
+		reply.Task.TaskID = c.lettersToMap[0]
 
-		for _, f := range c.mappedFiles {
-			if f.name == reply.Task.Filename && len(f.letters) == len(alphabet) {
+		for _, l := range c.mappedLetters {
+			if l.letter == reply.Task.TaskID && len(l.names) == len(workFiles) {
 				reply.Task.TaskType = "waiting"
 				continue
-			} else if f.name == reply.Task.Filename && len(f.letters) < len(alphabet) {
-				fmt.Printf("ran into value %v of alphabet at: %v\n", alphabet[len(f.letters)], len(f.letters))
-				reply.Task.TaskID = alphabet[len(f.letters)]
+			} else if l.letter == reply.Task.TaskID && len(l.names) < len(workFiles) {
+				reply.Task.Filename = workFiles[len(l.names)]
 			}
 		}
 
@@ -101,24 +102,22 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	}
 
 	fmt.Printf("status of files to map: %v\n", c.filesToMap)
-	fmt.Printf("status of mapped files and letters: %v\n", c.mappedFiles)
+	fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
 	fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
-	fmt.Printf("will now check for file %v...\n", args.Task.Filename[8:])
 	switch args.Task.TaskType {
 	case "map":
-		fmt.Println("checking for file in mappedFiles...")
-		for i, m := range c.mappedFiles {
-			if args.Task.Filename[8:] == m.name && len(m.letters) < len(alphabet) {
+		for i, m := range c.mappedLetters {
+			if args.Task.TaskID == m.letter && len(m.names) < len(workFiles) {
 				c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
-				c.mappedFiles[i].letters = append(c.mappedFiles[i].letters, args.Task.TaskID)
+				c.mappedLetters[i].names = append(c.mappedLetters[i].names, args.Task.Filename[8:])
 			}
 		}
 
 	case "reduce":
-		for _, m := range c.mappedFiles {
-			if args.Task.Filename[8:] == m.name && len(m.letters) == len(alphabet) {
-				c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
-				c.filesToReduce = append(c.filesToReduce, "mr-out-"+args.Task.Filename[8:])
+		for _, m := range c.mappedLetters {
+			if args.Task.TaskID == m.letter && len(m.names) == len(workFiles) {
+				c.lettersToMap = slices.Delete(c.lettersToMap, 0, 1)
+				//c.filesToReduce = append(c.filesToReduce, "mr-out-"+args.Task.Filename[8:])
 			}
 		}
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
@@ -151,6 +150,7 @@ func (c *Coordinator) Done() bool {
 	if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
 		ret = true
 	}
+	os.Remove("m-out-*")
 
 	// Your code here.
 
@@ -163,12 +163,15 @@ func (c *Coordinator) Done() bool {
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 	m := sync.Mutex{}
+	slices.Sort(alphabet)
 	c.filesToMap = files
-	c.mappedFiles = func() []mappedFile {
-		for _, f := range files {
-			c.mappedFiles = append(c.mappedFiles, mappedFile{f, []string{}})
+	c.lettersToMap = alphabet
+	workFiles = files
+	c.mappedLetters = func() []mappedLetter {
+		for _, l := range alphabet {
+			c.mappedLetters = append(c.mappedLetters, mappedLetter{l, []string{}})
 		}
-		return c.mappedFiles
+		return c.mappedLetters
 	}()
 	fmt.Printf("coordinator working with files: %v\n", files)
 
