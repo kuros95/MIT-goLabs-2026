@@ -2,7 +2,6 @@ package mr
 
 import (
 	"fmt"
-	"hash/fnv"
 	"log"
 	"net/rpc"
 	"os"
@@ -21,11 +20,11 @@ type KeyValue struct {
 
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-func ihash(key string) int {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return int(h.Sum32() & 0x7fffffff)
-}
+// func ihash(key string) int {
+// 	h := fnv.New32a()
+// 	h.Write([]byte(key))
+// 	return int(h.Sum32() & 0x7fffffff)
+// }
 
 // for sorting by key.
 type ByKey []KeyValue
@@ -46,7 +45,6 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
-		//time.Sleep(5 * time.Second)
 		taskID, taskType, taskFile := getTask()
 		switch taskType {
 		case "done":
