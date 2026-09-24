@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"net/rpc"
 	"os"
 	"path/filepath"
@@ -136,7 +135,21 @@ func (c *Coordinator) server(sockname string) {
 	if e != nil {
 		log.Fatalf("listen error %s: %v\n", sockname, e)
 	}
-	go http.Serve(l, nil)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				fmt.Printf("connection accepting error: %v\n", err)
+				continue
+			}
+			go handleConnection(c)
+		}
+	}()
+
+}
+
+func handleConnection(c net.Conn) {
+	//TODO: write the connection handling
 }
 
 // main/mrcoordinator.go calls Done() periodically to find out
