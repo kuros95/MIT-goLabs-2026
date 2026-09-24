@@ -116,10 +116,6 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 	}
 
-	// fmt.Printf("status of files to map: %v\n", c.filesToMap)
-	// fmt.Printf("status of mapped files and letters: %v\n", c.mappedLetters)
-	// fmt.Printf("status of files to reduce: %v\n", c.filesToReduce)
-
 	reply.Task.TaskType = "waiting"
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.TaskType = reply.Task.TaskType
 	fmt.Printf("task %v for file %v has been reported; setting worker %v to waiting...\n\n", args.Task.TaskType, args.Task.Filename, args.WorkerID)
@@ -129,7 +125,6 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) server(sockname string) {
 	rpc.Register(c)
-	rpc.HandleHTTP()
 	os.Remove(sockname)
 	l, e := net.Listen("unix", sockname)
 	if e != nil {
@@ -142,29 +137,9 @@ func (c *Coordinator) server(sockname string) {
 				fmt.Printf("connection accepting error: %v\n", err)
 				continue
 			}
-			go handleConnection(conn)
+			go rpc.ServeConn(conn)
 		}
 	}()
-
-}
-
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
-
-	buffer := make([]byte, 1024)
-	for {
-		n, err := conn.Read(buffer)
-		if err != nil {
-			fmt.Printf("connection read error: %v", err)
-			return
-		}
-		_, err = conn.Write(buffer[:n])
-		if err != nil {
-			fmt.Printf("connection write error: %v", err)
-			return
-		}
-	}
-
 }
 
 // main/mrcoordinator.go calls Done() periodically to find out

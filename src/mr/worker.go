@@ -71,7 +71,6 @@ mainLoop:
 		case "reduce":
 			oname := "mr-out-0"
 			intermediate := readIntermediate(taskID)
-			//fmt.Printf("working on file: %v\n", oname)
 			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, taskFile)
@@ -194,7 +193,7 @@ func readIntermediate(taskID string) []KeyValue {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
 	}
-	fmt.Printf("found files: %v\n", files)
+	// fmt.Printf("found files: %v\n", files)
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
