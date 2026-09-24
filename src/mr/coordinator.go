@@ -137,19 +137,34 @@ func (c *Coordinator) server(sockname string) {
 	}
 	go func() {
 		for {
-			c, err := l.Accept()
+			conn, err := l.Accept()
 			if err != nil {
 				fmt.Printf("connection accepting error: %v\n", err)
 				continue
 			}
-			go handleConnection(c)
+			go handleConnection(conn)
 		}
 	}()
 
 }
 
-func handleConnection(c net.Conn) {
-	//TODO: write the connection handling
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	buffer := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buffer)
+		if err != nil {
+			fmt.Printf("connection read error: %v", err)
+			return
+		}
+		_, err = conn.Write(buffer[:n])
+		if err != nil {
+			fmt.Printf("connection write error: %v", err)
+			return
+		}
+	}
+
 }
 
 // main/mrcoordinator.go calls Done() periodically to find out

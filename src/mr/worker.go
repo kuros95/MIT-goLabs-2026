@@ -232,7 +232,7 @@ func readIntermediate(taskID string) []KeyValue {
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	c, err := rpc.DialHTTP("unix", coordSockName)
+	c, err := rpc.Dial("unix", coordSockName)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
