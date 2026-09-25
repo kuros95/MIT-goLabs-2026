@@ -45,6 +45,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
+		//time.Sleep(time.Second)
 		taskID, taskType, taskFile := getTask()
 		switch taskType {
 		case "done":

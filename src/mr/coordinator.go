@@ -66,28 +66,35 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.TaskType = "done"
 
 	} else if len(c.filesToReduce) > 0 {
-		reply.Task.TaskType = "reduce"
+		c.mutex.Lock()
 		reply.Task.TaskID = c.filesToReduce[len(c.filesToReduce)-1][6:7]
 		reply.Task.Filename = c.filesToReduce[len(c.filesToReduce)-1]
+		if index := slices.Index(c.filesToReduce, reply.Task.Filename); index != -1 {
+			c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
+		}
+		c.mutex.Unlock()
+		reply.Task.TaskType = "reduce"
 
 	} else if len(c.filesToReduce) == 0 {
 		reply.Task.TaskID = c.lettersToMap[0]
-		for _, l := range c.mappedLetters {
+		for i, l := range c.mappedLetters {
 			if l.letter == reply.Task.TaskID && len(l.names) == len(workFiles) {
 				reply.Task.TaskType = "waiting"
 				continue
 			} else if l.letter == reply.Task.TaskID && len(l.names) < len(workFiles) {
-				reply.Task.TaskType = "map"
+				c.mutex.Lock()
 				reply.Task.Filename = workFiles[len(l.names)]
+				c.mappedLetters[i].names = append(c.mappedLetters[i].names, reply.Task.Filename)
+				c.mutex.Unlock()
+				reply.Task.TaskType = "map"
 			}
 		}
-
 	}
 
 	reply.TimeStamp = time.Now()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
-	fmt.Printf("worker %v has been given task: type: %v, file: %v, letter: %v at %v\n\n", args.WorkerID, reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID, reply.TimeStamp)
+	fmt.Printf("worker %v has been given task: type: %v, file: %v, letter: %v at %v\n\n", args.WorkerID, reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID, reply.TimeStamp.Format(time.DateTime))
 	return nil
 }
 
@@ -100,27 +107,17 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 	}
 
-	switch args.Task.TaskType {
-	case "map":
+	if args.Task.TaskType == "map" {
 		for i, m := range c.mappedLetters {
-			if args.Task.TaskID == m.letter && len(m.names) < len(workFiles) {
+			if args.Task.TaskID == m.letter && len(c.mappedLetters[i].names) == len(workFiles) {
 				c.mutex.Lock()
-				c.mappedLetters[i].names = append(c.mappedLetters[i].names, args.Task.Filename[8:])
-				c.mutex.Unlock()
-				if len(c.mappedLetters[i].names) == len(workFiles) {
-					c.mutex.Lock()
+				c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+				if len(c.lettersToMap) > 0 {
 					c.lettersToMap = slices.Delete(c.lettersToMap, 0, 1)
-					c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
-					c.mutex.Unlock()
 				}
+				c.mutex.Unlock()
 			}
 		}
-
-	case "reduce":
-		c.mutex.Lock()
-		index := slices.Index(c.filesToReduce, args.Task.Filename)
-		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
-		c.mutex.Unlock()
 	}
 
 	reply.Task.TaskType = "waiting"
@@ -163,12 +160,9 @@ func (c *Coordinator) Done() bool {
 		for _, f := range files {
 			os.Remove(f)
 		}
-
 		ret = true
 	}
-
 	// Your code here.
-
 	return ret
 }
 
@@ -199,6 +193,20 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
 					c.mutex.Lock()
 					c.workers[w].IsReassigned = true
+					switch c.workers[w].Task.TaskType {
+					case "map":
+						for i, l := range c.mappedLetters {
+							if l.letter == c.workers[w].Task.TaskID {
+								for j, n := range c.mappedLetters[i].names {
+									if n == c.workers[w].Task.Filename {
+										c.mappedLetters[i].names = slices.Delete(c.mappedLetters[i].names, j, j+1)
+									}
+								}
+							}
+						}
+					case "reduce":
+						c.filesToReduce = append(c.filesToReduce, c.workers[w].Task.Filename)
+					}
 					c.mutex.Unlock()
 				}
 			}
