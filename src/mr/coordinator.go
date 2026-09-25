@@ -32,6 +32,7 @@ type Coordinator struct {
 	mappedLetters []mappedLetter
 	filesToReduce []string
 	workers       []WorkerType
+	mutex         sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -103,17 +104,23 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	case "map":
 		for i, m := range c.mappedLetters {
 			if args.Task.TaskID == m.letter && len(m.names) < len(workFiles) {
+				c.mutex.Lock()
 				c.mappedLetters[i].names = append(c.mappedLetters[i].names, args.Task.Filename[8:])
+				c.mutex.Unlock()
 				if len(c.mappedLetters[i].names) == len(workFiles) {
+					c.mutex.Lock()
 					c.lettersToMap = slices.Delete(c.lettersToMap, 0, 1)
 					c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
+					c.mutex.Unlock()
 				}
 			}
 		}
 
 	case "reduce":
+		c.mutex.Lock()
 		index := slices.Index(c.filesToReduce, args.Task.Filename)
 		c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
+		c.mutex.Unlock()
 	}
 
 	reply.Task.TaskType = "waiting"
@@ -170,7 +177,6 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-	m := sync.Mutex{}
 	//slices.Sort(alphabet)
 	c.filesToMap = files
 	c.lettersToMap = alphabet
@@ -187,16 +193,16 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 
 	c.server(sockname)
 	fmt.Printf("coordinator is listening on %v, waiting for workers to connect...\n", sockname)
-	go func(m *sync.Mutex) {
+	go func() {
 		for {
 			for w := range c.workers {
 				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
-					m.Lock()
+					c.mutex.Lock()
 					c.workers[w].IsReassigned = true
-					m.Unlock()
+					c.mutex.Unlock()
 				}
 			}
 		}
-	}(&m)
+	}()
 	return &c
 }
