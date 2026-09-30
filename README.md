@@ -1,6 +1,6 @@
 # MIT: 6.5840: Distributed Systems - Labs
 
-This repo contains my solution openly available [MIT labs](https://pdos.csail.mit.edu/6.824/index.html) from their course "Distributed Systems".
+This repo contains my solution to openly available [MIT labs](https://pdos.csail.mit.edu/6.824/index.html) from their course "Distributed Systems".
 
 ## Completed labs
 
