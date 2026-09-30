@@ -46,6 +46,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 mainLoop:
 	for {
 		//time.Sleep(time.Second)
+		//TODO: Run through all letters in taskLetters and all files for each letter on Map, return a single reduce file.
 		taskID, taskType, taskLetters, taskFile := getTask()
 		switch taskType {
 		case "done":
