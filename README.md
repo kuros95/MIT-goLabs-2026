@@ -14,7 +14,7 @@ This repo contains my solution openly available [MIT labs](https://pdos.csail.mi
 
 ## Verification
 
-### Lab 1
+### Lab 1 - Distributed MapReduce
 
 1. Clone the repo \
 `git clone https://github.com/kuros95/MIT-goLabs-2026`
