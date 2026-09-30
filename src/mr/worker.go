@@ -47,7 +47,7 @@ mainLoop:
 	for {
 		//time.Sleep(time.Second)
 		//TODO: Run through all letters in taskLetters and all files for each letter on Map, return a single reduce file.
-		taskID, taskType, taskLetters, taskFile := getTask()
+		taskID, taskType, taskLetters, taskFiles := getTask()
 		switch taskType {
 		case "done":
 			fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
@@ -56,7 +56,7 @@ mainLoop:
 			fmt.Println("waiting for next task...")
 			continue
 		case "map":
-			contents := readFile(taskID, taskFile)
+			contents := readFile(taskID, taskFiles)
 			intermediate := mapf(taskFile, contents)
 			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
@@ -69,7 +69,7 @@ mainLoop:
 					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 			}
-			reportTask(taskID, taskType, ofile.Name())
+			reportTask(taskID, taskType, taskLetters, ofile.Name())
 		case "reduce":
 			oname := "mr-out-0"
 			intermediate := readIntermediate(taskID)
@@ -103,7 +103,7 @@ mainLoop:
 
 				i = j
 			}
-			reportTask(taskID, taskType, taskFile)
+			reportTask(taskID, taskType, taskLetters, taskFiles)
 		}
 
 		// uncomment to send the Example RPC to the coordinator.
@@ -138,26 +138,26 @@ func CallExample() {
 	}
 }
 
-func getTask() (int, string, []string, string) {
+func getTask() (int, string, []string, []string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.Task.ID)
+		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.ID)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
-	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filename
+	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filenames
 }
 
-func reportTask(taskID string, taskType string, taskFile string) string {
+func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) string {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{ID: taskID, Type: taskType, Filename: taskFile}}
+	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{ID: taskID, Type: taskType, Letters: taskLetters, Filenames: taskFiles}}
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v for file %v on letter %v\n\n", os.Getpid(), taskType, taskFile, taskID)
+		fmt.Printf("worker %v reported task: %v for file %v on letter %v\n\n", os.Getpid(), taskType, taskFiles, taskID)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
