@@ -46,7 +46,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 mainLoop:
 	for {
 		//time.Sleep(time.Second)
-		taskID, taskType, taskFile := getTask()
+		taskID, taskType, taskLetters, taskFile := getTask()
 		switch taskType {
 		case "done":
 			fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
@@ -137,22 +137,22 @@ func CallExample() {
 	}
 }
 
-func getTask() (string, string, string) {
+func getTask() (int, string, []string, string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID)
+		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.Task.ID)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
-	return reply.Task.TaskID, reply.Task.TaskType, reply.Task.Filename
+	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filename
 }
 
 func reportTask(taskID string, taskType string, taskFile string) string {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{TaskID: taskID, TaskType: taskType, Filename: taskFile}}
+	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{ID: taskID, Type: taskType, Filename: taskFile}}
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
@@ -160,7 +160,7 @@ func reportTask(taskID string, taskType string, taskFile string) string {
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
-	return reply.Task.TaskType
+	return reply.Task.Type
 }
 
 func readFile(letter string, taskFile string) string {

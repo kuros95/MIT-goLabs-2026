@@ -19,6 +19,11 @@ var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "
 
 var workFiles = []string{}
 
+var noReduce int
+
+// TODO: Set of letters to be decided by the noReduce.
+// TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
+// TODO: Schedule mapping of all files with a given set of letters.
 type mappedLetter struct {
 	letter string
 	names  []string
@@ -175,6 +180,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c.filesToMap = files
 	c.lettersToMap = alphabet
 	workFiles = files
+	noReduce = nReduce
 	c.mappedLetters = func() []mappedLetter {
 		for _, l := range alphabet {
 			c.mappedLetters = append(c.mappedLetters, mappedLetter{l, []string{}})
