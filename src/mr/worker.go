@@ -105,7 +105,6 @@ mainLoop:
 			reportTask(taskID, taskType, taskFile)
 		}
 
-		// answer when called if working
 		// uncomment to send the Example RPC to the coordinator.
 		// CallExample()
 	}
@@ -194,7 +193,7 @@ func readIntermediate(taskID string) []KeyValue {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
 	}
-	// fmt.Printf("found files: %v\n", files)
+
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -215,7 +214,7 @@ func readIntermediate(taskID string) []KeyValue {
 		for i := 0; i < len(fileContent)-1; i += 2 {
 			k := fileContent[i]
 			v := fileContent[i+1]
-			if unicode.IsLetter(rune(k[0])) && 0 < len(k) {
+			if 0 < len(k) && unicode.IsLetter(rune(k[0])) {
 				kv := KeyValue{k, v}
 				toReduce = append(toReduce, kv)
 			}
