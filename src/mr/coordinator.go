@@ -24,19 +24,17 @@ var noReduce int
 // TODO: Set of letters to be decided by the noReduce.
 // TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
 // TODO: Schedule mapping of all files with a given set of letters.
-type mappedLetter struct {
-	letter string
-	names  []string
-}
 
 type Coordinator struct {
 	// Your definitions here.
 	isDone        bool
 	filesToMap    []string
 	lettersToMap  []string
-	mappedLetters []mappedLetter
+	mappedLetters []string
 	filesToReduce []string
 	workers       []WorkerType
+	mCount        int
+	rCount        int
 	mutex         sync.Mutex
 }
 
@@ -81,15 +79,17 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.Type = "reduce"
 
 	} else if len(c.filesToReduce) == 0 {
-		reply.Task.ID = c.lettersToMap[0]
+		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
+		reply.Task.ID = c.mCount
 		for i, l := range c.mappedLetters {
-			if l.letter == reply.Task.ID && len(l.names) == len(workFiles) {
+			if l.letter == reply.Task.ID {
 				reply.Task.Type = "waiting"
 				continue
-			} else if l.letter == reply.Task.ID && len(l.names) < len(workFiles) {
+			} else if l.letter == reply.Task.ID {
 				c.mutex.Lock()
 				reply.Task.Filenames = c.filesToMap
 				c.mappedLetters[i].names = append(c.mappedLetters[i].names, reply.Task.Filename)
+				c.mCount++
 				c.mutex.Unlock()
 				reply.Task.Type = "map"
 			}
@@ -201,6 +201,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 					c.workers[w].IsReassigned = true
 					switch c.workers[w].Task.Type {
 					case "map":
+						c.mCount--
 						for i, l := range c.mappedLetters {
 							if l.letter == c.workers[w].Task.ID {
 								for j, n := range c.mappedLetters[i].names {
