@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -56,11 +57,16 @@ mainLoop:
 			fmt.Println("waiting for next task...")
 			continue
 		case "map":
-			contents := readFile(taskID, taskFiles)
-			intermediate := mapf(taskFile, contents)
-			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
+			var intermediate []KeyValue
+			for f := range taskFiles {
+				contents := readFile(taskLetters, taskFiles[f])
+				inter := mapf(taskFiles[f], contents)
+				intermediate = append(intermediate, inter...)
+			}
+
+			ofile, err := os.OpenFile("m-out-"+string(taskID), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("error: %v file: %v", err, taskFile)
+				log.Fatalf("error: %v file: %v", err, ofile.Name())
 			}
 			defer ofile.Close()
 			for i := range intermediate {
@@ -69,13 +75,13 @@ mainLoop:
 					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 			}
-			reportTask(taskID, taskType, taskLetters, ofile.Name())
+			reportTask(taskID, taskType, taskLetters, []string{ofile.Name()})
 		case "reduce":
-			oname := "mr-out-0"
-			intermediate := readIntermediate(taskID)
-			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			oname := "mr-out-" + string(taskID)
+			intermediate := readIntermediate("m-out-" + string(taskID))
+			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("error: %v file: %v", err, taskFile)
+				log.Fatalf("error: %v file: %v", err, oname)
 			}
 			defer ofile.Close()
 			// call Reduce on each distinct key in intermediate[],
@@ -164,10 +170,13 @@ func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) st
 	return reply.Task.Type
 }
 
-func readFile(letter string, taskFile string) string {
+func readFile(letters []string, taskFile string) string {
 	sf := func(r rune) bool { return !unicode.IsLetter(r) }
 	//read the given file and read only the given letter from it
-
+	type mapper struct {
+		words []string
+		mutex sync.Mutex
+	}
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
 		fmt.Printf("error while reading file %v: %v\n", taskFile, err)
@@ -175,15 +184,20 @@ func readFile(letter string, taskFile string) string {
 	}
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
-	toMap := []string{}
-
-	for _, w := range final {
-		if w[0:1] == letter {
-			toMap = append(toMap, w)
-		}
+	toMap := mapper{}
+	for l := range letters {
+		go func() {
+			for _, w := range final {
+				if w[0:1] == letters[l] {
+					toMap.mutex.Lock()
+					toMap.words = append(toMap.words, w)
+					toMap.mutex.Unlock()
+				}
+			}
+		}()
 	}
 
-	return strings.Join(toMap, " ")
+	return strings.Join(toMap.words, " ")
 }
 
 func readIntermediate(taskID string) []KeyValue {
