@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 )
@@ -46,8 +45,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
-		//time.Sleep(time.Second)
-		//TODO: Run through all letters in taskLetters and all files for each letter on Map, return a single reduce file.
+		time.Sleep(time.Second)
 		taskID, taskType, taskLetters, taskFiles := getTask()
 		switch taskType {
 		case "done":
@@ -64,7 +62,7 @@ mainLoop:
 				intermediate = append(intermediate, inter...)
 			}
 
-			ofile, err := os.OpenFile("m-out-"+string(taskID), os.O_CREATE|os.O_WRONLY, 0644)
+			ofile, err := os.OpenFile("m-out-"+fmt.Sprint(taskID), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, ofile.Name())
 			}
@@ -77,8 +75,8 @@ mainLoop:
 			}
 			reportTask(taskID, taskType, taskLetters, []string{ofile.Name()})
 		case "reduce":
-			oname := "mr-out-" + string(taskID)
-			intermediate := readIntermediate("m-out-" + string(taskID))
+			oname := "mr-out-" + fmt.Sprint(taskID)
+			intermediate := readIntermediate(fmt.Sprint(taskID))
 			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, oname)
@@ -109,7 +107,7 @@ mainLoop:
 
 				i = j
 			}
-			reportTask(taskID, taskType, taskLetters, taskFiles)
+			reportTask(taskID, taskType, taskLetters, []string{oname})
 		}
 
 		// uncomment to send the Example RPC to the coordinator.
@@ -150,7 +148,7 @@ func getTask() (int, string, []string, []string) {
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.ID)
+		fmt.Printf("worker %v received task: %v for files %v on letters %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.Letters)
 	} else {
 		fmt.Printf("task acquisition failed!\n")
 	}
@@ -163,7 +161,7 @@ func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) st
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v for file %v on letter %v\n\n", os.Getpid(), taskType, taskFiles, taskID)
+		fmt.Printf("worker %v reported task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
 	} else {
 		fmt.Printf("task report failed!\n")
 	}
@@ -173,10 +171,6 @@ func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) st
 func readFile(letters []string, taskFile string) string {
 	sf := func(r rune) bool { return !unicode.IsLetter(r) }
 	//read the given file and read only the given letter from it
-	type mapper struct {
-		words []string
-		mutex sync.Mutex
-	}
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
 		fmt.Printf("error while reading file %v: %v\n", taskFile, err)
@@ -184,26 +178,21 @@ func readFile(letters []string, taskFile string) string {
 	}
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
-	toMap := mapper{}
+	var toMap []string
 	for l := range letters {
-		go func() {
-			for _, w := range final {
-				if w[0:1] == letters[l] {
-					toMap.mutex.Lock()
-					toMap.words = append(toMap.words, w)
-					toMap.mutex.Unlock()
-				}
+		for _, w := range final {
+			if w[0:1] == letters[l] {
+				toMap = append(toMap, w)
 			}
-		}()
+		}
 	}
 
-	return strings.Join(toMap.words, " ")
+	return strings.Join(toMap, " ")
 }
 
 func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
-
-	files, err := filepath.Glob("m-out-" + taskID + "-*")
+	files, err := filepath.Glob("m-out-" + taskID)
 	if err != nil {
 		fmt.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
