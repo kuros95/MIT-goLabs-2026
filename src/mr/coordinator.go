@@ -19,7 +19,7 @@ var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "
 
 var workFiles = []string{}
 
-var divider, remainder int
+var divider, remainder, noOfReduce int
 
 // TODO: Set of letters to be decided by the noReduce.
 // TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
@@ -89,15 +89,15 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 
 		reply.Task.ID = c.mCount
 
-		if len(c.lettersToMap) >= divider {
+		if c.rCount < noOfReduce {
 			chosenLetters = c.lettersToMap[:divider]
-		} else if len(c.lettersToMap) < divider {
+		} else if c.rCount == noOfReduce {
 			chosenLetters = c.lettersToMap
 		}
 		reply.Task.Letters = append(reply.Task.Letters, chosenLetters...)
 
 		reply.Task.Filenames = c.filesToMap
-		c.mappedLetters = append(c.mappedLetters, reply.Task.Letters...)
+
 		c.mCount++
 		reply.Task.Type = "map"
 		if len(c.lettersToMap) > 0 {
@@ -126,6 +126,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 
 	if args.Task.Type == "map" {
 		c.mutex.Lock()
+		c.mappedLetters = append(c.mappedLetters, args.Task.Letters...)
 		c.filesToReduce = append(c.filesToReduce, args.Task.Filenames[0])
 		c.mutex.Unlock()
 	}
@@ -186,6 +187,7 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c.filesToMap = files
 	c.lettersToMap = alphabet
 	workFiles = files
+	noOfReduce = nReduce
 	divider = len(alphabet) / nReduce
 	remainder = len(alphabet) % nReduce
 	fmt.Printf("coordinator working with files: %v\n", files)
