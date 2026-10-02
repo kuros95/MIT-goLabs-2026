@@ -1,6 +1,6 @@
 # MIT: 6.5840: Distributed Systems - Labs
 
-This repo contains my solution openly available [MIT labs](https://pdos.csail.mit.edu/6.824/index.html) from their course "Distributed Systems".
+This repo contains my solution to openly available [MIT labs](https://pdos.csail.mit.edu/6.824/index.html) from their course "Distributed Systems".
 
 ## Completed labs
 
@@ -31,6 +31,6 @@ Syntax: `mrcoordinator.go sockname inputfiles...`
 `go run mrworker.go ../mrapps/wc.so /tmp/my.sock` \
 Syntax: `worker.go plugin sockname`
 
-5. Observe the output file `mr-out-0` in `src/main`
+5. Observe the output in files `mr-out-X` in `src/main`
 
 The solution has been tested on up to 4 workers, each time resulting in the same output.
