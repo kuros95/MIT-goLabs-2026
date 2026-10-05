@@ -1,7 +1,6 @@
 package mr
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -34,7 +33,7 @@ type Coordinator struct {
 	workers       []WorkerType
 	mCount        int
 	rCount        int
-	mutex         sync.Mutex
+	mutex         sync.RWMutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -57,11 +56,14 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		}
 	}
 	if !found {
+		c.mutex.Lock()
 		c.workers = append(c.workers, *args)
-		fmt.Printf("found a new worker! %v\n", args.WorkerID)
+		c.mutex.Unlock()
+		log.Printf("found a new worker! %v\n", args.WorkerID)
+
 	}
 	if found {
-		fmt.Printf("giving another task to worker %v\n", args.WorkerID)
+		log.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
 	if len(c.mappedLetters) == len(alphabet) && len(c.filesToReduce) == 0 {
@@ -69,8 +71,6 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 
 	} else if len(c.filesToReduce) > 0 {
 		c.mutex.Lock()
-		defer c.mutex.Unlock()
-
 		reply.Task.ID = c.rCount
 		filename := []string{c.filesToReduce[0]}
 		reply.Task.Filenames = append(reply.Task.Filenames, filename...)
@@ -79,19 +79,18 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 			c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 		}
 		c.rCount++
+		c.mutex.Unlock()
 		reply.Task.Type = "reduce"
 
 	} else if len(c.filesToReduce) == 0 {
 		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
-		var chosenLetters []string
 		c.mutex.Lock()
-		defer c.mutex.Unlock()
-
+		var chosenLetters []string
 		reply.Task.ID = c.mCount
 
-		if c.rCount < noOfReduce {
+		if c.rCount < noOfReduce-2 {
 			chosenLetters = c.lettersToMap[:divider]
-		} else if c.rCount == noOfReduce {
+		} else if c.rCount == noOfReduce-2 {
 			chosenLetters = c.lettersToMap
 		}
 		reply.Task.Letters = append(reply.Task.Letters, chosenLetters...)
@@ -105,22 +104,26 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		} else if len(c.lettersToMap) == 0 {
 			reply.Task.Type = "waiting"
 		}
-
+		c.mutex.Unlock()
 	}
 
 	reply.TimeStamp = time.Now()
+	c.mutex.Lock()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
-	fmt.Printf("worker %v has been given task: type: %v, ID: %v, letters: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.ID, reply.Task.Letters, reply.TimeStamp.Format(time.DateTime))
+	c.mutex.Unlock()
+	log.Printf("worker %v has been given task: type: %v, ID: %v, letters: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.ID, reply.Task.Letters, reply.TimeStamp.Format(time.DateTime))
 	return nil
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
-	fmt.Printf("reporting task %v from worker %v for letters %v and ID %v\n", args.Task.Type, args.WorkerID, args.Task.Letters, args.Task.ID)
+	log.Printf("reporting task %v from worker %v for letters %v and ID %v\n", args.Task.Type, args.WorkerID, args.Task.Letters, args.Task.ID)
 	if c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].IsReassigned == true {
 		reply.Task.Type = "waiting"
+		c.mutex.Lock()
 		c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.Type = reply.Task.Type
-		fmt.Printf("task %v for letters %v and ID %v has already been reassigned...\n\n", args.Task.Type, args.Task.Letters, args.Task.ID)
+		c.mutex.Unlock()
+		log.Printf("task %v for letters %v and ID %v has already been reassigned...\n\n", args.Task.Type, args.Task.Letters, args.Task.ID)
 		return nil
 	}
 
@@ -132,8 +135,10 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	}
 
 	reply.Task.Type = "waiting"
+	c.mutex.Lock()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.Type = reply.Task.Type
-	fmt.Printf("task %v for letters %v in file %v has been reported; setting worker %v to waiting...\n\n", args.Task.Type, args.Task.Letters, args.Task.Filenames[0], args.WorkerID)
+	c.mutex.Unlock()
+	log.Printf("task %v for letters %v in file %v has been reported; setting worker %v to waiting...\n\n", args.Task.Type, args.Task.Letters, args.Task.Filenames[0], args.WorkerID)
 	return nil
 }
 
@@ -149,7 +154,7 @@ func (c *Coordinator) server(sockname string) {
 		for {
 			conn, err := l.Accept()
 			if err != nil {
-				fmt.Printf("connection accepting error: %v\n", err)
+				log.Printf("connection accepting error: %v\n", err)
 				continue
 			}
 			go rpc.ServeConn(conn)
@@ -163,10 +168,10 @@ func (c *Coordinator) Done() bool {
 	ret := false
 
 	if len(c.mappedLetters) == len(alphabet) && len(c.filesToReduce) == 0 {
-		fmt.Println("removing intermediate files...")
+		log.Println("removing intermediate files...")
 		files, err := filepath.Glob("m-out-*")
 		if err != nil {
-			fmt.Printf("error finding intermediate files: %v\n", err)
+			log.Printf("error finding intermediate files: %v\n", err)
 		}
 		for _, f := range files {
 			os.Remove(f)
@@ -190,12 +195,12 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	noOfReduce = nReduce
 	divider = len(alphabet) / nReduce
 	remainder = len(alphabet) % nReduce
-	fmt.Printf("coordinator working with files: %v\n", files)
+	log.Printf("coordinator working with files: %v\n", files)
 
 	// Your code here.
 
 	c.server(sockname)
-	fmt.Printf("coordinator is listening on %v, waiting for workers to connect...\n", sockname)
+	log.Printf("coordinator is listening on %v, waiting for workers to connect...\n", sockname)
 	go func() {
 		for {
 			for w := range c.workers {

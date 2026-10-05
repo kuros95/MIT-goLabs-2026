@@ -49,10 +49,10 @@ mainLoop:
 		taskID, taskType, taskLetters, taskFiles := getTask()
 		switch taskType {
 		case "done":
-			fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
+			log.Printf("worker %v terminating after job well done...\n", os.Getpid())
 			break mainLoop
 		case "waiting":
-			fmt.Println("waiting for next task...")
+			log.Println("waiting for next task...")
 			continue
 		case "map":
 			var intermediate []KeyValue
@@ -70,7 +70,7 @@ mainLoop:
 			for i := range intermediate {
 				_, err := fmt.Fprintf(ofile, "%v %v ", intermediate[i].Key, intermediate[i].Value)
 				if err != nil {
-					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
+					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 			}
 			reportTask(taskID, taskType, taskLetters, []string{ofile.Name()})
@@ -102,7 +102,7 @@ mainLoop:
 				toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
 				_, err := ofile.WriteString(toWrite)
 				if err != nil {
-					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
+					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 
 				i = j
@@ -136,9 +136,9 @@ func CallExample() {
 	ok := call("Coordinator.Example", &args, &reply)
 	if ok {
 		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
+		log.Printf("reply.Y %v\n", reply.Y)
 	} else {
-		fmt.Printf("call failed!\n")
+		log.Printf("call failed!\n")
 	}
 }
 
@@ -148,9 +148,9 @@ func getTask() (int, string, []string, []string) {
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v received task: %v for files %v on letters %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.Letters)
+		log.Printf("worker %v received task: %v for files %v on letters %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.Letters)
 	} else {
-		fmt.Printf("task acquisition failed!\n")
+		log.Printf("task acquisition failed!\n")
 	}
 	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filenames
 }
@@ -161,9 +161,9 @@ func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) st
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
+		log.Printf("worker %v reported task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
 	} else {
-		fmt.Printf("task report failed!\n")
+		log.Printf("task report failed!\n")
 	}
 	return reply.Task.Type
 }
@@ -173,7 +173,7 @@ func readFile(letters []string, taskFile string) string {
 	//read the given file and read only the given letter from it
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
-		fmt.Printf("error while reading file %v: %v\n", taskFile, err)
+		log.Printf("error while reading file %v: %v\n", taskFile, err)
 		return ""
 	}
 	draft := string(data)
@@ -194,14 +194,14 @@ func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
 	files, err := filepath.Glob("m-out-" + taskID)
 	if err != nil {
-		fmt.Printf("error finding intermediate files: %v\n", err)
+		log.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
 	}
 
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			fmt.Printf("error while reading file %v: %v\n", file, err)
+			log.Printf("error while reading file %v: %v\n", file, err)
 		}
 		if len(data) == 0 {
 			continue
