@@ -33,7 +33,7 @@ type Coordinator struct {
 	workers       []WorkerType
 	mCount        int
 	rCount        int
-	mutex         sync.RWMutex
+	mutex         sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -47,7 +47,8 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
-	// TaskID is the letter for which worker is generating intermediate data.
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	found := false
 	for w := range c.workers {
 		if c.workers[w].WorkerID == args.WorkerID {
@@ -56,9 +57,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		}
 	}
 	if !found {
-		c.mutex.Lock()
 		c.workers = append(c.workers, *args)
-		c.mutex.Unlock()
 		log.Printf("found a new worker! %v\n", args.WorkerID)
 
 	}
@@ -70,7 +69,6 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.Type = "done"
 
 	} else if len(c.filesToReduce) > 0 {
-		c.mutex.Lock()
 		reply.Task.ID = c.rCount
 		filename := []string{c.filesToReduce[0]}
 		reply.Task.Filenames = append(reply.Task.Filenames, filename...)
@@ -79,12 +77,10 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 			c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 		}
 		c.rCount++
-		c.mutex.Unlock()
 		reply.Task.Type = "reduce"
 
 	} else if len(c.filesToReduce) == 0 {
 		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
-		c.mutex.Lock()
 		var chosenLetters []string
 		reply.Task.ID = c.mCount
 
@@ -104,40 +100,34 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		} else if len(c.lettersToMap) == 0 {
 			reply.Task.Type = "waiting"
 		}
-		c.mutex.Unlock()
 	}
 
 	reply.TimeStamp = time.Now()
-	c.mutex.Lock()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task = reply.Task
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].TimeStamp = reply.TimeStamp
-	c.mutex.Unlock()
 	log.Printf("worker %v has been given task: type: %v, ID: %v, letters: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.ID, reply.Task.Letters, reply.TimeStamp.Format(time.DateTime))
 	return nil
 }
 
 func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	log.Printf("reporting task %v from worker %v for letters %v and ID %v\n", args.Task.Type, args.WorkerID, args.Task.Letters, args.Task.ID)
 	if c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].IsReassigned == true {
 		reply.Task.Type = "waiting"
-		c.mutex.Lock()
 		c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.Type = reply.Task.Type
-		c.mutex.Unlock()
 		log.Printf("task %v for letters %v and ID %v has already been reassigned...\n\n", args.Task.Type, args.Task.Letters, args.Task.ID)
 		return nil
 	}
 
 	if args.Task.Type == "map" {
-		c.mutex.Lock()
 		c.mappedLetters = append(c.mappedLetters, args.Task.Letters...)
 		c.filesToReduce = append(c.filesToReduce, args.Task.Filenames[0])
-		c.mutex.Unlock()
 	}
 
 	reply.Task.Type = "waiting"
-	c.mutex.Lock()
 	c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].Task.Type = reply.Task.Type
-	c.mutex.Unlock()
 	log.Printf("task %v for letters %v in file %v has been reported; setting worker %v to waiting...\n\n", args.Task.Type, args.Task.Letters, args.Task.Filenames[0], args.WorkerID)
 	return nil
 }
@@ -167,7 +157,10 @@ func (c *Coordinator) server(sockname string) {
 func (c *Coordinator) Done() bool {
 	ret := false
 
-	if len(c.mappedLetters) == len(alphabet) && len(c.filesToReduce) == 0 {
+	c.mutex.Lock()
+	isDone := len(c.mappedLetters) == len(alphabet) && len(c.filesToReduce) == 0
+	c.mutex.Unlock()
+	if isDone {
 		log.Println("removing intermediate files...")
 		files, err := filepath.Glob("m-out-*")
 		if err != nil {
@@ -203,8 +196,15 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	log.Printf("coordinator is listening on %v, waiting for workers to connect...\n", sockname)
 	go func() {
 		for {
-			for w := range c.workers {
-				if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) {
+			c.mutex.Lock()
+			workers := make([]WorkerType, len(c.workers))
+			copy(workers, c.workers)
+			c.mutex.Unlock()
+			for w := range workers {
+				c.mutex.Lock()
+				timeSince := time.Since(c.workers[w].TimeStamp)
+				c.mutex.Unlock()
+				if timeSince > time.Duration(10*time.Second) {
 					c.mutex.Lock()
 					c.workers[w].IsReassigned = true
 					switch c.workers[w].Task.Type {
