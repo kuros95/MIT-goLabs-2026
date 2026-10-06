@@ -11,6 +11,27 @@ import (
 	"time"
 )
 
+// TODO: Set of letters to be decided by the noReduce.
+// TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
+// TODO: Schedule mapping of all files with a given set of letters.
+
+type fileToReduce struct {
+	name string
+	ID   int
+}
+
+type Coordinator struct {
+	// Your definitions here.
+	filesToMap    []string
+	lettersToMap  []string
+	mappedLetters []string
+	filesToReduce []fileToReduce
+	workers       []WorkerType
+	mCount        int
+	rCount        int
+	mutex         sync.Mutex
+}
+
 var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "f", "G", "g",
 	"H", "h", "I", "i", "J", "j", "K", "k", "L", "l", "M", "m", "N", "n", "O", "o", "P", "p",
 	"Q", "q", "R", "r", "S", "s", "T", "t", "U", "u", "V", "v", "W", "w", "X", "x", "Y", "y",
@@ -19,22 +40,6 @@ var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "
 var workFiles = []string{}
 
 var divider, remainder, noOfReduce int
-
-// TODO: Set of letters to be decided by the noReduce.
-// TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
-// TODO: Schedule mapping of all files with a given set of letters.
-
-type Coordinator struct {
-	// Your definitions here.
-	filesToMap    []string
-	lettersToMap  []string
-	mappedLetters []string
-	filesToReduce []string
-	workers       []WorkerType
-	mCount        int
-	rCount        int
-	mutex         sync.Mutex
-}
 
 // Your code here -- RPC handlers for the worker to call.
 
@@ -69,34 +74,35 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.Task.Type = "done"
 
 	} else if len(c.filesToReduce) > 0 {
-		reply.Task.ID = c.rCount
-		filename := []string{c.filesToReduce[0]}
+		reply.Task.ID = c.filesToReduce[0].ID
+		filename := []string{c.filesToReduce[0].name}
 		reply.Task.Filenames = append(reply.Task.Filenames, filename...)
 
-		if index := slices.Index(c.filesToReduce, reply.Task.Filenames[0]); index != -1 {
+		if index := slices.Index(c.filesToReduce, fileToReduce{reply.Task.Filenames[0], reply.Task.ID}); index != -1 {
 			c.filesToReduce = slices.Delete(c.filesToReduce, index, index+1)
 		}
-		c.rCount++
+
 		reply.Task.Type = "reduce"
+		c.rCount++
 
 	} else if len(c.filesToReduce) == 0 {
 		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
 		var chosenLetters []string
 		reply.Task.ID = c.mCount
 
-		if c.rCount < noOfReduce-2 {
+		if c.mCount < noOfReduce-1 {
 			chosenLetters = c.lettersToMap[:divider]
-		} else if c.rCount == noOfReduce-2 {
+		} else if c.mCount == noOfReduce-1 {
 			chosenLetters = c.lettersToMap
 		}
 		reply.Task.Letters = append(reply.Task.Letters, chosenLetters...)
 
 		reply.Task.Filenames = c.filesToMap
 
-		c.mCount++
 		reply.Task.Type = "map"
 		if len(c.lettersToMap) > 0 {
 			c.lettersToMap = slices.Delete(c.lettersToMap, 0, len(reply.Task.Letters))
+			c.mCount++
 		} else if len(c.lettersToMap) == 0 {
 			reply.Task.Type = "waiting"
 		}
@@ -123,7 +129,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 
 	if args.Task.Type == "map" {
 		c.mappedLetters = append(c.mappedLetters, args.Task.Letters...)
-		c.filesToReduce = append(c.filesToReduce, args.Task.Filenames[0])
+		c.filesToReduce = append(c.filesToReduce, fileToReduce{args.Task.Filenames[0], args.Task.ID})
 	}
 
 	reply.Task.Type = "waiting"
@@ -203,21 +209,22 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 			for w := range workers {
 				c.mutex.Lock()
 				timeSince := time.Since(c.workers[w].TimeStamp)
+				isReassigned := c.workers[w].IsReassigned
 				c.mutex.Unlock()
-				if timeSince > time.Duration(10*time.Second) {
+				if timeSince > time.Duration(10*time.Second) && isReassigned == false {
 					c.mutex.Lock()
 					c.workers[w].IsReassigned = true
 					switch c.workers[w].Task.Type {
 					case "map":
-						c.mCount--
 						for l := range c.mappedLetters {
 							if c.mappedLetters[l] == c.workers[w].Task.Letters[0] {
 								c.mappedLetters = slices.Delete(c.mappedLetters, l, l+len(c.workers[w].Task.Letters))
 							}
 						}
+						c.mCount--
 					case "reduce":
+						c.filesToReduce = append(c.filesToReduce, fileToReduce{c.workers[w].Task.Filenames[0], c.workers[w].Task.ID})
 						c.rCount--
-						c.filesToReduce = append(c.filesToReduce, c.workers[w].Task.Filenames[0])
 					}
 					c.mutex.Unlock()
 				}
