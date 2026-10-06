@@ -46,35 +46,40 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 mainLoop:
 	for {
 		//time.Sleep(time.Second)
-		taskID, taskType, taskFile := getTask()
+		taskID, taskType, taskLetters, taskFiles := getTask()
 		switch taskType {
 		case "done":
-			fmt.Printf("worker %v terminating after job well done...\n", os.Getpid())
+			log.Printf("worker %v terminating after job well done...\n", os.Getpid())
 			break mainLoop
 		case "waiting":
-			fmt.Println("waiting for next task...")
+			log.Println("waiting for next task...")
 			continue
 		case "map":
-			contents := readFile(taskID, taskFile)
-			intermediate := mapf(taskFile, contents)
-			ofile, err := os.OpenFile("m-out-"+taskID+"-"+taskFile, os.O_CREATE|os.O_WRONLY, 0644)
+			var intermediate []KeyValue
+			for f := range taskFiles {
+				contents := readFile(taskLetters, taskFiles[f])
+				inter := mapf(taskFiles[f], contents)
+				intermediate = append(intermediate, inter...)
+			}
+
+			ofile, err := os.OpenFile("m-out-"+fmt.Sprint(taskID), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("error: %v file: %v", err, taskFile)
+				log.Fatalf("error: %v file: %v", err, ofile.Name())
 			}
 			defer ofile.Close()
 			for i := range intermediate {
 				_, err := fmt.Fprintf(ofile, "%v %v ", intermediate[i].Key, intermediate[i].Value)
 				if err != nil {
-					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
+					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 			}
-			reportTask(taskID, taskType, ofile.Name())
+			reportTask(taskID, taskType, taskLetters, []string{ofile.Name()})
 		case "reduce":
-			oname := "mr-out-0"
-			intermediate := readIntermediate(taskID)
-			ofile, err := os.OpenFile(oname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			oname := "mr-out-" + fmt.Sprint(taskID)
+			intermediate := readIntermediate(fmt.Sprint(taskID))
+			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				log.Fatalf("error: %v file: %v", err, taskFile)
+				log.Fatalf("error: %v file: %v", err, oname)
 			}
 			defer ofile.Close()
 			// call Reduce on each distinct key in intermediate[],
@@ -97,12 +102,12 @@ mainLoop:
 				toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
 				_, err := ofile.WriteString(toWrite)
 				if err != nil {
-					fmt.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
+					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
 				}
 
 				i = j
 			}
-			reportTask(taskID, taskType, taskFile)
+			reportTask(taskID, taskType, taskLetters, []string{oname})
 		}
 
 		// uncomment to send the Example RPC to the coordinator.
@@ -131,54 +136,54 @@ func CallExample() {
 	ok := call("Coordinator.Example", &args, &reply)
 	if ok {
 		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
+		log.Printf("reply.Y %v\n", reply.Y)
 	} else {
-		fmt.Printf("call failed!\n")
+		log.Printf("call failed!\n")
 	}
 }
 
-func getTask() (string, string, string) {
+func getTask() (int, string, []string, []string) {
 
 	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v received task: %v for file %v on letter %v\n\n", os.Getpid(), reply.Task.TaskType, reply.Task.Filename, reply.Task.TaskID)
+		log.Printf("worker %v received task: %v for files %v on letters %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.Letters)
 	} else {
-		fmt.Printf("task acquisition failed!\n")
+		log.Printf("task acquisition failed!\n")
 	}
-	return reply.Task.TaskID, reply.Task.TaskType, reply.Task.Filename
+	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filenames
 }
 
-func reportTask(taskID string, taskType string, taskFile string) string {
+func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) string {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{TaskID: taskID, TaskType: taskType, Filename: taskFile}}
+	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{ID: taskID, Type: taskType, Letters: taskLetters, Filenames: taskFiles}}
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		fmt.Printf("worker %v reported task: %v for file %v on letter %v\n\n", os.Getpid(), taskType, taskFile, taskID)
+		log.Printf("worker %v reported task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
 	} else {
-		fmt.Printf("task report failed!\n")
+		log.Printf("task report failed!\n")
 	}
-	return reply.Task.TaskType
+	return reply.Task.Type
 }
 
-func readFile(letter string, taskFile string) string {
+func readFile(letters []string, taskFile string) string {
 	sf := func(r rune) bool { return !unicode.IsLetter(r) }
 	//read the given file and read only the given letter from it
-
 	data, err := os.ReadFile(taskFile)
 	if err != nil {
-		fmt.Printf("error while reading file %v: %v\n", taskFile, err)
+		log.Printf("error while reading file %v: %v\n", taskFile, err)
 		return ""
 	}
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
-	toMap := []string{}
-
-	for _, w := range final {
-		if w[0:1] == letter {
-			toMap = append(toMap, w)
+	var toMap []string
+	for l := range letters {
+		for _, w := range final {
+			if w[0:1] == letters[l] {
+				toMap = append(toMap, w)
+			}
 		}
 	}
 
@@ -187,17 +192,16 @@ func readFile(letter string, taskFile string) string {
 
 func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
-
-	files, err := filepath.Glob("m-out-" + taskID + "-*")
+	files, err := filepath.Glob("m-out-" + taskID)
 	if err != nil {
-		fmt.Printf("error finding intermediate files: %v\n", err)
+		log.Printf("error finding intermediate files: %v\n", err)
 		return toReduce
 	}
 
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			fmt.Printf("error while reading file %v: %v\n", file, err)
+			log.Printf("error while reading file %v: %v\n", file, err)
 		}
 		if len(data) == 0 {
 			continue

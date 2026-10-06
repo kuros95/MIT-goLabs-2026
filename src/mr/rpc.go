@@ -22,9 +22,10 @@ type ExampleReply struct {
 }
 
 type Task struct {
-	TaskID   string
-	TaskType string
-	Filename string
+	ID        int
+	Type      string
+	Letters   []string
+	Filenames []string
 }
 
 type WorkerType struct {
