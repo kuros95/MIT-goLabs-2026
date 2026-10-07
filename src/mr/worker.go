@@ -62,6 +62,9 @@ mainLoop:
 				intermediate = append(intermediate, inter...)
 			}
 
+			//without this part TestMapParallel produces a false negative
+			//logs would indicate only 2 workers present, but they would be counted multiple times
+			//this part reduces the mention of each worker to exactly once
 			files, err := filepath.Glob("m-out-*")
 			if err != nil {
 				log.Printf("error finding files: %v\n", err)
