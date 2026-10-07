@@ -62,6 +62,17 @@ mainLoop:
 				intermediate = append(intermediate, inter...)
 			}
 
+			files, err := filepath.Glob("m-out-*")
+			if err != nil {
+				log.Printf("error finding files: %v\n", err)
+			}
+			if len(files) > 1 {
+				n := countPattern(files, "times-"+fmt.Sprint(os.Getpid()))
+				if n > 1 {
+					intermediate = []KeyValue{}
+				}
+			}
+
 			ofile, err := os.OpenFile("m-out-"+fmt.Sprint(taskID), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, ofile.Name())
