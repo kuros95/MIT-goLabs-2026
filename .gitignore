@@ -2,3 +2,4 @@ pkg/
 *-handin.tar.gz
 src/main/m*.txt
 src/main/mr-out-*
+src/main/m-out*
