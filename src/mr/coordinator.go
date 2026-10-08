@@ -267,9 +267,9 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 								c.mappedLetters = slices.Delete(c.mappedLetters, indexToDelete, indexToDelete+len(c.workers[w].Task.Letters))
 							}
 							c.lettersToMap = append(c.lettersToMap, c.workers[w].Task.Letters...)
-							if c.mCount > 0 {
-								c.mCount--
-							}
+							// if c.mCount > 0 {
+							// 	c.mCount--
+							// }
 						case "reduce":
 							c.filesToReduce = append(c.filesToReduce, fileToReduce{c.workers[w].Task.Filenames[0], c.workers[w].Task.ID})
 						}
