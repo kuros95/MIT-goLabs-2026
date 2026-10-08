@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net/rpc"
@@ -76,18 +77,31 @@ mainLoop:
 				}
 			}
 
-			ofile, err := os.OpenFile("m-out-"+fmt.Sprint(taskID), os.O_CREATE|os.O_WRONLY, 0644)
+			tempFile, err := os.CreateTemp("", "m-tmp-out-*")
 			if err != nil {
-				log.Fatalf("error: %v file: %v", err, ofile.Name())
+				log.Fatalf("error: %v file: %v", err, tempFile.Name())
 			}
-			defer ofile.Close()
+			tempName := tempFile.Name()
+
+			writer := bufio.NewWriter(tempFile)
 			for i := range intermediate {
-				_, err := fmt.Fprintf(ofile, "%v %v ", intermediate[i].Key, intermediate[i].Value)
-				if err != nil {
-					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
-				}
+				writer.WriteString(intermediate[i].Key)
+				writer.WriteByte(' ')
+				writer.WriteString(intermediate[i].Value)
+				writer.WriteByte(' ')
 			}
-			reportTask(taskID, taskType, taskLetters, []string{ofile.Name()})
+			if err := writer.Flush(); err != nil {
+				log.Printf("error flushing to file %v: %v\n", tempName, err)
+			}
+			tempFile.Close()
+
+			finalName := "m-out-" + fmt.Sprint(taskID)
+			files, _ = filepath.Glob(finalName)
+			if len(files) == 0 {
+				os.Rename(tempName, finalName)
+			}
+
+			reportTask(taskID, taskType, taskLetters, []string{finalName})
 		case "reduce":
 			oname := "mr-out-" + fmt.Sprint(taskID)
 			intermediate := readIntermediate(fmt.Sprint(taskID))
@@ -175,7 +189,7 @@ func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) st
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v reported task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
+		log.Printf("worker %v reporting task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
 	} else {
 		log.Printf("task report failed!\n")
 	}
@@ -190,14 +204,19 @@ func readFile(letters []string, taskFile string) string {
 		log.Printf("error while reading file %v: %v\n", taskFile, err)
 		return ""
 	}
+
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
+
+	letterSet := make(map[string]bool)
+	for _, l := range letters {
+		letterSet[l] = true
+	}
+
 	var toMap []string
-	for l := range letters {
-		for _, w := range final {
-			if w[0:1] == letters[l] {
-				toMap = append(toMap, w)
-			}
+	for _, w := range final {
+		if letterSet[w[0:1]] {
+			toMap = append(toMap, w)
 		}
 	}
 
@@ -206,38 +225,33 @@ func readFile(letters []string, taskFile string) string {
 
 func readIntermediate(taskID string) []KeyValue {
 	toReduce := []KeyValue{}
-	files, err := filepath.Glob("m-out-" + taskID)
+	file := "m-out-" + taskID
+
+	data, err := os.ReadFile(file)
 	if err != nil {
-		log.Printf("error finding intermediate files: %v\n", err)
-		return toReduce
+		log.Printf("error while reading file %v: %v\n", file, err)
+	}
+	if len(data) == 0 {
+		return []KeyValue{}
 	}
 
-	for _, file := range files {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			log.Printf("error while reading file %v: %v\n", file, err)
-		}
-		if len(data) == 0 {
-			continue
-		}
-
-		draft := string(data)
-		fileContent := strings.Split(draft, " ")
-		// for i, w := range fileContent {
-		// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
-		// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
-		// 		toReduce = append(toReduce, kv)
-		// 	}
-		// }
-		for i := 0; i < len(fileContent)-1; i += 2 {
-			k := fileContent[i]
-			v := fileContent[i+1]
-			if 0 < len(k) && unicode.IsLetter(rune(k[0])) {
-				kv := KeyValue{k, v}
-				toReduce = append(toReduce, kv)
-			}
+	draft := string(data)
+	fileContent := strings.Split(draft, " ")
+	// for i, w := range fileContent {
+	// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
+	// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
+	// 		toReduce = append(toReduce, kv)
+	// 	}
+	// }
+	for i := 0; i < len(fileContent)-1; i += 2 {
+		k := fileContent[i]
+		v := fileContent[i+1]
+		if 0 < len(k) && unicode.IsLetter(rune(k[0])) {
+			kv := KeyValue{k, v}
+			toReduce = append(toReduce, kv)
 		}
 	}
+
 	// It is required for Map Reduce to sort the intermediate data by key before reduce phase.
 	// Without it, the reduce phase won't work.
 	sort.Sort(ByKey(toReduce))

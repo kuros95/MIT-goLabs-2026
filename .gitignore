@@ -3,3 +3,5 @@ pkg/
 src/main/m*.txt
 src/main/mr-out-*
 src/main/m-out*
+src/log.txt
+src/mr/mr-tmp*
