@@ -78,7 +78,7 @@ mainLoop:
 			// 	}
 			// }
 
-			for n := range divider {
+			for n := range rCount {
 				var letters []string
 				if n+divider < len(alphabet) {
 					letters = alphabet[n : n+divider]
@@ -86,29 +86,26 @@ mainLoop:
 					letters = alphabet[n:]
 				}
 
-				letterSet := make(map[string]bool)
-				for _, l := range letters {
-					letterSet[l] = true
-				}
-
 				var toWrite []KeyValue
-				for _, w := range intermediate {
-					if letterSet[w.Key[0:1]] {
-						toWrite = append(toWrite, w)
+				for i := range letters {
+					for j := range intermediate {
+						if letters[i] == intermediate[j].Key[0:1] {
+							toWrite = append(toWrite, intermediate[j])
+						}
 					}
 				}
 
-				tempFile, err := os.CreateTemp("", "m-tmp-out-*")
-				if err != nil {
-					log.Fatalf("error: %v file: %v", err, tempFile.Name())
-				}
-				tempName := tempFile.Name()
-
-				tempFile.Close()
-
-				finalName := "m-" + taskFile[3:4] + "-" + fmt.Sprint(n)
+				finalName := "m-" + taskFile[14:15] + "-" + fmt.Sprint(n)
+				fmt.Printf("worker %v writing to file: %v\n", os.Getpid(), finalName)
 				files, _ := filepath.Glob(finalName)
 				if len(files) == 0 {
+					tempFile, err := os.CreateTemp("", "m-tmp-out-*")
+					if err != nil {
+						log.Fatalf("error: %v file: %v", err, tempFile.Name())
+					}
+					tempName := tempFile.Name()
+
+					defer tempFile.Close()
 					writer := bufio.NewWriter(tempFile)
 					for i := range intermediate {
 						writer.WriteString(intermediate[i].Key)
@@ -126,7 +123,7 @@ mainLoop:
 						log.Fatalf("error opening file %v: %v", file.Name(), err)
 					}
 					for i := range intermediate {
-						fmt.Fprintf(file, "%v %v\n", intermediate[i].Key, intermediate[i].Value)
+						fmt.Fprintf(file, "%v %v ", intermediate[i].Key, intermediate[i].Value)
 					}
 				}
 				n = n + divider
@@ -134,8 +131,8 @@ mainLoop:
 
 			reportTask(taskType, taskFile)
 		case "reduce":
-			oname := "mr-out-" + string(taskFile[len(taskFile)-1])
-			intermediate := readIntermediate(taskFile)
+			oname := "mr-out-" + fmt.Sprint(rCount)
+			intermediate := readIntermediate(rCount)
 			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, oname)
@@ -207,11 +204,11 @@ func getTask() (string, string, int) {
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v received task: %v for file %v with nReduce %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.rCount)
+		log.Printf("worker %v received task: %v for file %v with nReduce %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.ID)
 	} else {
 		log.Printf("task acquisition failed!\n")
 	}
-	return reply.Task.Type, reply.Task.Filename, reply.rCount
+	return reply.Task.Type, reply.Task.Filename, reply.ID
 }
 
 func reportTask(taskType string, taskFile string) string {
@@ -242,31 +239,43 @@ func readFile(taskFile string) string {
 	return strings.Join(final, " ")
 }
 
-func readIntermediate(taskFile string) []KeyValue {
+func readIntermediate(taskID int) []KeyValue {
 	toReduce := []KeyValue{}
 
-	data, err := os.ReadFile(taskFile)
+	files, err := filepath.Glob("m-*-" + fmt.Sprint(taskID))
 	if err != nil {
-		log.Printf("error while reading file %v: %v\n", taskFile, err)
-	}
-	if len(data) == 0 {
+		log.Printf("error finding intermediate files: %v\n", err)
 		return []KeyValue{}
 	}
+	if len(files) == 0 {
+		log.Printf("no intermediate files found for taskID %v\n", taskID)
+		return []KeyValue{}
+	}
+	for i := range files {
+		data, err := os.ReadFile(files[i])
+		if err != nil {
+			log.Printf("error while reading file %v: %v\n", files[i], err)
+			continue
+		}
+		if len(data) == 0 {
+			continue
+		}
 
-	draft := string(data)
-	fileContent := strings.Split(draft, " ")
-	// for i, w := range fileContent {
-	// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
-	// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
-	// 		toReduce = append(toReduce, kv)
-	// 	}
-	// }
-	for i := 0; i < len(fileContent)-1; i += 2 {
-		k := fileContent[i]
-		v := fileContent[i+1]
-		if 0 < len(k) && unicode.IsLetter(rune(k[0])) {
-			kv := KeyValue{k, v}
-			toReduce = append(toReduce, kv)
+		draft := string(data)
+		fileContent := strings.Split(draft, " ")
+		// for i, w := range fileContent {
+		// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
+		// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
+		// 		toReduce = append(toReduce, kv)
+		// 	}
+		// }
+		for i := 0; i < len(fileContent)-1; i += 2 {
+			k := fileContent[i]
+			v := fileContent[i+1]
+			if 0 < len(k) && unicode.IsLetter(rune(k[0])) {
+				kv := KeyValue{k, v}
+				toReduce = append(toReduce, kv)
+			}
 		}
 	}
 

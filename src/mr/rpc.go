@@ -30,7 +30,7 @@ type WorkerType struct {
 	WorkerID     int
 	IsReassigned bool
 	Task         Task
-	rCount       int
+	ID           int
 	TimeStamp    time.Time
 }
 

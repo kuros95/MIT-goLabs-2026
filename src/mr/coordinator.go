@@ -21,6 +21,7 @@ type Coordinator struct {
 	filesToReduce []string
 	workers       []WorkerType
 	rCount        int
+	noReduce      int
 	mutex         sync.Mutex
 }
 
@@ -74,6 +75,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	} else if len(c.filesToMap) == 0 {
 		reply.Task.Filename = c.filesToReduce[0]
 		reply.Task.Type = "reduce"
+		reply.ID = c.noReduce
 		c.updateWorkers(args.WorkerID, reply.Task)
 		log.Printf("worker %v has been given task: type: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 		return nil
@@ -81,7 +83,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	} else if len(c.filesToMap) > 0 {
 		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
 		reply.Task.Filename = c.filesToMap[0]
-		reply.rCount = c.rCount
+		reply.ID = c.rCount
 		reply.Task.Type = "map"
 		c.updateWorkers(args.WorkerID, reply.Task)
 		log.Printf("worker %v has been given task: type: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
@@ -121,7 +123,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		}
 		if len(c.filesToReduce) > 0 {
 			c.filesToReduce = slices.Delete(c.filesToReduce, 0, 1)
-			c.rCount++
+			c.noReduce++
 		}
 	}
 
