@@ -22,16 +22,15 @@ type ExampleReply struct {
 }
 
 type Task struct {
-	ID        int
-	Type      string
-	Letters   []string
-	Filenames []string
+	Type     string
+	Filename string
 }
 
 type WorkerType struct {
 	WorkerID     int
 	IsReassigned bool
 	Task         Task
+	rCount       int
 	TimeStamp    time.Time
 }
 

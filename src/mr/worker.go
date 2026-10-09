@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -37,6 +36,11 @@ func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 var coordSockName string // socket for coordinator
 
+var alphabet = []string{"A", "a", "B", "b", "C", "c", "D", "d", "E", "e", "F", "f", "G", "g",
+	"H", "h", "I", "i", "J", "j", "K", "k", "L", "l", "M", "m", "N", "n", "O", "o", "P", "p",
+	"Q", "q", "R", "r", "S", "s", "T", "t", "U", "u", "V", "v", "W", "w", "X", "x", "Y", "y",
+	"Z", "z"}
+
 // main/mrworker.go calls this function.
 func Worker(sockname string, mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
@@ -47,7 +51,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 mainLoop:
 	for {
 		//time.Sleep(time.Second)
-		taskID, taskType, taskLetters, taskFiles := getTask()
+		taskType, taskFile, rCount := getTask()
 		switch taskType {
 		case "done":
 			log.Printf("worker %v terminating after job well done...\n", os.Getpid())
@@ -56,55 +60,82 @@ mainLoop:
 			log.Println("waiting for next task...")
 			continue
 		case "map":
-			var intermediate []KeyValue
-			for f := range taskFiles {
-				contents := readFile(taskLetters, taskFiles[f])
-				inter := mapf(taskFiles[f], contents)
-				intermediate = append(intermediate, inter...)
-			}
+			divider := len(alphabet) / rCount
+			contents := readFile(taskFile)
+			intermediate := mapf(taskFile, contents)
 
-			//without this part TestMapParallel produces a false negative
-			//logs would indicate only 2 workers present, but they would be counted multiple times
-			//this part reduces the mention of each worker to exactly once
-			files, err := filepath.Glob("m-out-*")
-			if err != nil {
-				log.Printf("error finding files: %v\n", err)
-			}
-			if len(files) > 1 {
-				n := countPattern(files, "times-"+fmt.Sprint(os.Getpid()))
-				if n > 1 {
-					intermediate = []KeyValue{}
+			// //without this part TestMapParallel produces a false negative
+			// //logs would indicate only 2 workers present, but they would be counted multiple times
+			// //this part reduces the mention of each worker to exactly once
+			// files, err := filepath.Glob("m-out-*")
+			// if err != nil {
+			// 	log.Printf("error finding files: %v\n", err)
+			// }
+			// if len(files) > 1 {
+			// 	n := countPattern(files, "times-"+fmt.Sprint(os.Getpid()))
+			// 	if n > 1 {
+			// 		intermediate = []KeyValue{}
+			// 	}
+			// }
+
+			for n := range divider {
+				var letters []string
+				if n+divider < len(alphabet) {
+					letters = alphabet[n : n+divider]
+				} else if n+divider > len(alphabet) {
+					letters = alphabet[n:]
 				}
+
+				letterSet := make(map[string]bool)
+				for _, l := range letters {
+					letterSet[l] = true
+				}
+
+				var toWrite []KeyValue
+				for _, w := range intermediate {
+					if letterSet[w.Key[0:1]] {
+						toWrite = append(toWrite, w)
+					}
+				}
+
+				tempFile, err := os.CreateTemp("", "m-tmp-out-*")
+				if err != nil {
+					log.Fatalf("error: %v file: %v", err, tempFile.Name())
+				}
+				tempName := tempFile.Name()
+
+				tempFile.Close()
+
+				finalName := "m-" + taskFile[3:4] + "-" + fmt.Sprint(n)
+				files, _ := filepath.Glob(finalName)
+				if len(files) == 0 {
+					writer := bufio.NewWriter(tempFile)
+					for i := range intermediate {
+						writer.WriteString(intermediate[i].Key)
+						writer.WriteByte(' ')
+						writer.WriteString(intermediate[i].Value)
+						writer.WriteByte(' ')
+					}
+					if err := writer.Flush(); err != nil {
+						log.Fatalf("error flushing to file %v: %v\n", tempName, err)
+					}
+					os.Rename(tempName, finalName)
+				} else if len(files) > 0 {
+					file, err := os.OpenFile(files[0], os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+					if err != nil {
+						log.Fatalf("error opening file %v: %v", file.Name(), err)
+					}
+					for i := range intermediate {
+						fmt.Fprintf(file, "%v %v\n", intermediate[i].Key, intermediate[i].Value)
+					}
+				}
+				n = n + divider
 			}
 
-			tempFile, err := os.CreateTemp("", "m-tmp-out-*")
-			if err != nil {
-				log.Fatalf("error: %v file: %v", err, tempFile.Name())
-			}
-			tempName := tempFile.Name()
-
-			writer := bufio.NewWriter(tempFile)
-			for i := range intermediate {
-				writer.WriteString(intermediate[i].Key)
-				writer.WriteByte(' ')
-				writer.WriteString(intermediate[i].Value)
-				writer.WriteByte(' ')
-			}
-			if err := writer.Flush(); err != nil {
-				log.Printf("error flushing to file %v: %v\n", tempName, err)
-			}
-			tempFile.Close()
-
-			finalName := "m-out-" + fmt.Sprint(taskID)
-			files, _ = filepath.Glob(finalName)
-			if len(files) == 0 {
-				os.Rename(tempName, finalName)
-			}
-
-			reportTask(taskID, taskType, taskLetters, []string{finalName})
+			reportTask(taskType, taskFile)
 		case "reduce":
-			oname := "mr-out-" + fmt.Sprint(taskID)
-			intermediate := readIntermediate(fmt.Sprint(taskID))
+			oname := "mr-out-" + string(taskFile[len(taskFile)-1])
+			intermediate := readIntermediate(taskFile)
 			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, oname)
@@ -135,7 +166,7 @@ mainLoop:
 
 				i = j
 			}
-			reportTask(taskID, taskType, taskLetters, []string{oname})
+			reportTask(taskType, taskFile)
 		}
 
 		// uncomment to send the Example RPC to the coordinator.
@@ -170,33 +201,33 @@ func CallExample() {
 	}
 }
 
-func getTask() (int, string, []string, []string) {
+func getTask() (string, string, int) {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, TimeStamp: time.Now()}
+	args := WorkerType{WorkerID: os.Getpid()}
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v received task: %v for files %v on letters %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filenames, reply.Task.Letters)
+		log.Printf("worker %v received task: %v for file %v with nReduce %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.rCount)
 	} else {
 		log.Printf("task acquisition failed!\n")
 	}
-	return reply.Task.ID, reply.Task.Type, reply.Task.Letters, reply.Task.Filenames
+	return reply.Task.Type, reply.Task.Filename, reply.rCount
 }
 
-func reportTask(taskID int, taskType string, taskLetters, taskFiles []string) string {
+func reportTask(taskType string, taskFile string) string {
 
-	args := WorkerType{WorkerID: os.Getpid(), IsReassigned: false, Task: Task{ID: taskID, Type: taskType, Letters: taskLetters, Filenames: taskFiles}}
+	args := WorkerType{WorkerID: os.Getpid(), Task: Task{Type: taskType, Filename: taskFile}}
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v reporting task: %v for files %v on letters %v\n\n", os.Getpid(), taskType, taskFiles, taskLetters)
+		log.Printf("worker %v reporting task: %v for file %v\n\n", os.Getpid(), taskType, taskFile)
 	} else {
 		log.Printf("task report failed!\n")
 	}
 	return reply.Task.Type
 }
 
-func readFile(letters []string, taskFile string) string {
+func readFile(taskFile string) string {
 	sf := func(r rune) bool { return !unicode.IsLetter(r) }
 	//read the given file and read only the given letter from it
 	data, err := os.ReadFile(taskFile)
@@ -208,28 +239,15 @@ func readFile(letters []string, taskFile string) string {
 	draft := string(data)
 	final := strings.FieldsFunc(draft, sf)
 
-	letterSet := make(map[string]bool)
-	for _, l := range letters {
-		letterSet[l] = true
-	}
-
-	var toMap []string
-	for _, w := range final {
-		if letterSet[w[0:1]] {
-			toMap = append(toMap, w)
-		}
-	}
-
-	return strings.Join(toMap, " ")
+	return strings.Join(final, " ")
 }
 
-func readIntermediate(taskID string) []KeyValue {
+func readIntermediate(taskFile string) []KeyValue {
 	toReduce := []KeyValue{}
-	file := "m-out-" + taskID
 
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(taskFile)
 	if err != nil {
-		log.Printf("error while reading file %v: %v\n", file, err)
+		log.Printf("error while reading file %v: %v\n", taskFile, err)
 	}
 	if len(data) == 0 {
 		return []KeyValue{}
