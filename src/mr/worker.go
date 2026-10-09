@@ -77,14 +77,15 @@ mainLoop:
 			// 		intermediate = []KeyValue{}
 			// 	}
 			// }
-
+			var i int
 			for n := range rCount {
 				var letters []string
-				if n+divider < len(alphabet) {
-					letters = alphabet[n : n+divider]
-				} else if n+divider > len(alphabet) {
-					letters = alphabet[n:]
+				if n < rCount-1 {
+					letters = alphabet[i : i+divider]
+				} else if n == rCount-1 {
+					letters = alphabet[i:]
 				}
+				fmt.Printf("worker %v writing letters: %v for file %v\n", os.Getpid(), letters, taskFile[11:])
 
 				var toWrite []KeyValue
 				for i := range letters {
@@ -97,36 +98,24 @@ mainLoop:
 
 				finalName := "m-" + taskFile[14:15] + "-" + fmt.Sprint(n)
 				fmt.Printf("worker %v writing to file: %v\n", os.Getpid(), finalName)
-				files, _ := filepath.Glob(finalName)
-				if len(files) == 0 {
-					tempFile, err := os.CreateTemp("", "m-tmp-out-*")
-					if err != nil {
-						log.Fatalf("error: %v file: %v", err, tempFile.Name())
-					}
-					tempName := tempFile.Name()
-
-					defer tempFile.Close()
-					writer := bufio.NewWriter(tempFile)
-					for i := range intermediate {
-						writer.WriteString(intermediate[i].Key)
-						writer.WriteByte(' ')
-						writer.WriteString(intermediate[i].Value)
-						writer.WriteByte(' ')
-					}
-					if err := writer.Flush(); err != nil {
-						log.Fatalf("error flushing to file %v: %v\n", tempName, err)
-					}
-					os.Rename(tempName, finalName)
-				} else if len(files) > 0 {
-					file, err := os.OpenFile(files[0], os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-					if err != nil {
-						log.Fatalf("error opening file %v: %v", file.Name(), err)
-					}
-					for i := range intermediate {
-						fmt.Fprintf(file, "%v %v ", intermediate[i].Key, intermediate[i].Value)
-					}
+				tempFile, err := os.CreateTemp("", "m-tmp-out-*")
+				if err != nil {
+					log.Fatalf("error: %v file: %v", err, tempFile.Name())
 				}
-				n = n + divider
+				tempName := tempFile.Name()
+				writer := bufio.NewWriter(tempFile)
+				for i := range toWrite {
+					writer.WriteString(toWrite[i].Key)
+					writer.WriteByte(' ')
+					writer.WriteString(toWrite[i].Value)
+					writer.WriteByte(' ')
+				}
+				if err := writer.Flush(); err != nil {
+					log.Fatalf("error flushing to file %v: %v\n", tempName, err)
+				}
+				os.Rename(tempName, finalName)
+				tempFile.Close()
+				i = i + divider
 			}
 
 			reportTask(taskType, taskFile)

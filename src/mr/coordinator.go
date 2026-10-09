@@ -67,7 +67,7 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	// fmt.Printf("letters to map: %v\n", c.lettersToMap)
 	// fmt.Printf("files to reduce: %v\n", c.filesToReduce)
 
-	if len(c.filesToMap) == 0 && len(c.filesToReduce) == 0 {
+	if c.rCount == c.noReduce {
 		reply.Task.Type = "done"
 		c.updateWorkers(args.WorkerID, reply.Task)
 		return nil
@@ -121,30 +121,21 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 			c.updateWorkers(args.WorkerID, reply.Task)
 			return nil
 		}
-		if len(c.filesToReduce) > 0 {
-			c.filesToReduce = slices.Delete(c.filesToReduce, 0, 1)
+		if c.noReduce < c.rCount {
 			c.noReduce++
 		}
 	}
 
 	if args.Task.Type == "map" {
-		files, err := filepath.Glob(args.Task.Filename)
-		if err != nil {
-			log.Printf("error finding intermediate files: %v\n", err)
-			reply.Task.Type = "waiting"
-			c.updateWorkers(args.WorkerID, reply.Task)
-			return nil
-		}
-		if len(files) > 0 {
+		index := slices.IndexFunc(c.filesToMap, func(f string) bool { return f == args.Task.Filename })
+		if index == -1 {
 			log.Printf("task %v for file %v has already been completed...\n\n", args.Task.Type, args.Task.Filename)
 			reply.Task.Type = "waiting"
 			c.updateWorkers(args.WorkerID, reply.Task)
 			return nil
 		}
 		c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
-		if len(c.filesToMap) > 0 {
-			c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
-		}
+		c.filesToMap = slices.Delete(c.filesToMap, index, index+1)
 
 	}
 	reply.Task.Type = "waiting"
@@ -179,7 +170,7 @@ func (c *Coordinator) Done() bool {
 	ret := false
 
 	c.mutex.Lock()
-	isDone := len(c.filesToMap) == 0 && len(c.filesToReduce) == 0
+	isDone := c.rCount == c.noReduce
 	c.mutex.Unlock()
 	if isDone {
 		log.Println("removing intermediate files...")
