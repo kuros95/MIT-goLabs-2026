@@ -62,8 +62,13 @@ mainLoop:
 			continue
 		case "map":
 			divider := len(alphabet) / rCount
-			contents := readFile(taskFile)
-			intermediate := mapf(taskFile, contents)
+			data, err := os.ReadFile(taskFile)
+			if err != nil {
+				log.Printf("error while reading file %v: %v\n", taskFile, err)
+				data = []byte{}
+			}
+
+			intermediate := mapf(taskFile, string(data))
 
 			// //without this part TestMapParallel produces a false negative
 			// //logs would indicate only 2 workers present, but they would be counted multiple times
@@ -231,21 +236,6 @@ func reportTask(taskType string, taskFile string) string {
 		log.Printf("task report failed!\n")
 	}
 	return reply.Task.Type
-}
-
-func readFile(taskFile string) string {
-	sf := func(r rune) bool { return !unicode.IsLetter(r) }
-	//read the given file and read only the given letter from it
-	data, err := os.ReadFile(taskFile)
-	if err != nil {
-		log.Printf("error while reading file %v: %v\n", taskFile, err)
-		return ""
-	}
-
-	draft := string(data)
-	final := strings.FieldsFunc(draft, sf)
-
-	return strings.Join(final, " ")
 }
 
 func readIntermediate(taskID int) []KeyValue {
