@@ -15,14 +15,22 @@ import (
 // TODO: Set of letters to be decided by the noReduce.
 // TODO: Each Map round will consist of a number of letters and all files and produce only ONE m-out-* file.
 // TODO: Schedule mapping of all files with a given set of letters.
+type task struct {
+	ID   int
+	done bool
+}
 
 type Coordinator struct {
 	// Your definitions here.
 	filesToMap   []string
 	filesReduced []string
 	workers      []WorkerType
+	rTasks       []task
+	mCount       int
 	rCount       int
+	noMap        int
 	noReduce     int
+	done         bool
 	mutex        sync.Mutex
 }
 
@@ -64,17 +72,27 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		log.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
+	fmt.Printf("mCount: %v\n", c.mCount)
 	fmt.Printf("rCount: %v\n", c.rCount)
 	fmt.Printf("noReduce: %v\n", c.noReduce)
 
-	if c.rCount == c.noReduce {
+	if c.done {
 		reply.Task.Type = "done"
 		c.updateWorkers(args.WorkerID, reply.Task)
 		return nil
 
-	} else if len(c.filesToMap) == 0 {
+	} else if len(c.filesToMap) == 0 && c.noMap == c.mCount {
 		reply.Task.Type = "reduce"
-		reply.ID = c.noReduce
+		newID := slices.IndexFunc(c.rTasks, func(t task) bool { return !t.done })
+		if newID == -1 {
+			reply.Task.Type = "waiting"
+			c.updateWorkers(args.WorkerID, reply.Task)
+			log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+			return nil
+		}
+		reply.ID = newID
+		c.rTasks[newID].done = true
+		c.filesReduced = append(c.filesReduced, reply.Task.Filename)
 		c.updateWorkers(args.WorkerID, reply.Task)
 		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 		return nil
@@ -82,8 +100,9 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	} else if len(c.filesToMap) > 0 {
 		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
 		reply.Task.Filename = c.filesToMap[0]
-		reply.ID = c.rCount
 		reply.Task.Type = "map"
+		reply.ID = c.rCount
+		c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
 		c.updateWorkers(args.WorkerID, reply.Task)
 		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 		return nil
@@ -105,30 +124,8 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 		log.Printf("task %v for file %v has already been reassigned...\n\n", args.Task.Type, args.Task.Filename)
 		return nil
 	}
-
-	if args.Task.Type == "reduce" {
-		if slices.IndexFunc(c.filesReduced, func(f string) bool { return f == args.Task.Filename }) != -1 {
-			reply.Task.Type = "waiting"
-			c.updateWorkers(args.WorkerID, reply.Task)
-			log.Printf("task %v for file %v has already been completed...\n\n", args.Task.Type, args.Task.Filename)
-			return nil
-		}
-		c.filesReduced = append(c.filesReduced, args.Task.Filename)
-		if c.noReduce < c.rCount {
-			c.noReduce++
-		}
-	}
-
-	if args.Task.Type == "map" {
-		index := slices.IndexFunc(c.filesToMap, func(f string) bool { return f == args.Task.Filename })
-		if index == -1 {
-			log.Printf("task %v for file %v has already been completed...\n\n", args.Task.Type, args.Task.Filename)
-			reply.Task.Type = "waiting"
-			c.updateWorkers(args.WorkerID, reply.Task)
-			return nil
-		}
-		c.filesToMap = slices.Delete(c.filesToMap, index, index+1)
-
+	if args.Task.Type == "map" && c.noMap < c.mCount {
+		c.noMap++
 	}
 	reply.Task.Type = "waiting"
 	c.updateWorkers(args.WorkerID, reply.Task)
@@ -162,7 +159,7 @@ func (c *Coordinator) Done() bool {
 	ret := false
 
 	c.mutex.Lock()
-	isDone := c.rCount == c.noReduce
+	isDone := c.done
 	c.mutex.Unlock()
 	if isDone {
 		log.Println("removing intermediate files...")
@@ -192,7 +189,12 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 	c := Coordinator{}
 	//slices.Sort(alphabet)
 	c.filesToMap = files
+	c.mCount = len(files)
 	c.rCount = nReduce
+	c.rTasks = make([]task, nReduce)
+	for i := range nReduce {
+		c.rTasks[i] = task{ID: i, done: false}
+	}
 	log.Printf("coordinator working with files: %v\n", files)
 	log.Printf("amount of reduce tasks: %v\n", c.rCount)
 
@@ -208,26 +210,20 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 				for w := range c.workers {
 					if time.Since(c.workers[w].TimeStamp) > time.Duration(10*time.Second) && c.workers[w].IsReassigned == false {
 						c.workers[w].IsReassigned = true
-						// switch c.workers[w].Task.Type {
-						// case "map":
-						// 	var indexToDelete int
-						// 	for l := range c.mappedLetters {
-						// 		if c.mappedLetters[l] == c.workers[w].Task.Letters[0] {
-						// 			indexToDelete = l
-						// 		}
-						// 	}
-						// 	if len(c.mappedLetters) > 0 {
-						// 		c.mappedLetters = slices.Delete(c.mappedLetters, indexToDelete, indexToDelete+len(c.workers[w].Task.Letters))
-						// 	}
-						// 	c.lettersToMap = append(c.lettersToMap, c.workers[w].Task.Letters...)
-						// case "reduce":
-						// 	c.filesToReduce = append(c.filesToReduce, fileToReduce{c.workers[w].Task.Filenames[0], c.workers[w].Task.ID})
-						// }
+						switch c.workers[w].Task.Type {
+						case "map":
+							c.filesToMap = append(c.filesToMap, c.workers[w].Task.Filename)
+							log.Printf("worker %v has timed out and been reassigned task: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, c.workers[w].Task.Filename)
+						case "reduce":
+							index := slices.IndexFunc(c.filesReduced, func(f string) bool { return f == c.workers[w].Task.Filename })
+							c.rTasks[c.workers[w].ID].done = false
+							c.filesReduced = slices.Delete(c.filesReduced, index, index+1)
+							log.Printf("worker %v has timed out and been reassigned task: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, c.workers[w].Task.Filename)
+						}
 					}
 				}
 			}
 			c.mutex.Unlock()
-
 		}
 	}()
 	return &c
