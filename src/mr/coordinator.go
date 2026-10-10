@@ -75,8 +75,10 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 	fmt.Printf("mCount: %v\n", c.mCount)
 	fmt.Printf("rCount: %v\n", c.rCount)
 	fmt.Printf("noReduce: %v\n", c.noReduce)
+	fmt.Printf("noMap: %v\n", c.noMap)
 
-	if c.done {
+	if c.noMap == c.mCount && c.noReduce == c.rCount {
+		c.done = true
 		reply.Task.Type = "done"
 		c.updateWorkers(args.WorkerID, reply.Task)
 		return nil
@@ -127,6 +129,14 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	if args.Task.Type == "map" && c.noMap < c.mCount {
 		c.noMap++
 	}
+	if args.Task.Type == "reduce" && c.noReduce < c.rCount {
+		c.noReduce++
+	}
+	fmt.Printf("noMap: %v\n", c.noMap)
+	fmt.Printf("mCount: %v\n", c.mCount)
+	fmt.Printf("noReduce: %v\n", c.noReduce)
+	fmt.Printf("rCount: %v\n", c.rCount)
+
 	reply.Task.Type = "waiting"
 	c.updateWorkers(args.WorkerID, reply.Task)
 	log.Printf("task %v for file %v has been reported; setting worker %v to waiting...\n\n", args.Task.Type, args.Task.Filename, args.WorkerID)

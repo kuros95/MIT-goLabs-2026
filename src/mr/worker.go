@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -51,7 +50,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
-		time.Sleep(time.Second)
+		//time.Sleep(time.Second)
 		taskType, taskFile, rCount := getTask()
 		switch taskType {
 		case "done":
