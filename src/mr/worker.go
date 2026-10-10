@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -50,7 +51,7 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
-		//time.Sleep(time.Second)
+		time.Sleep(time.Second)
 		taskType, taskFile, rCount := getTask()
 		switch taskType {
 		case "done":
@@ -96,7 +97,9 @@ mainLoop:
 					}
 				}
 
-				finalName := "m-" + taskFile[14:15] + "-" + fmt.Sprint(n)
+				l := strings.Index(taskFile, "-")
+
+				finalName := "m-" + taskFile[l+1:l+2] + "-" + fmt.Sprint(n)
 				fmt.Printf("worker %v writing to file: %v\n", os.Getpid(), finalName)
 				tempFile, err := os.CreateTemp("", "m-tmp-out-*")
 				if err != nil {
@@ -120,9 +123,24 @@ mainLoop:
 
 			reportTask(taskType, taskFile)
 		case "reduce":
+
 			oname := "mr-out-" + fmt.Sprint(rCount)
+			files, err := filepath.Glob(oname)
+			if err != nil {
+				log.Printf("error finding intermediate files: %v\n", err)
+				continue
+			}
+			if len(files) > 0 {
+				log.Printf("task %v for file %v has already been completed...\n\n", taskType, oname)
+				continue
+			}
+			tempFile, err := os.CreateTemp("", "mr-tmp-out-*")
+			if err != nil {
+				log.Fatalf("error: %v file: %v", err, tempFile.Name())
+			}
 			intermediate := readIntermediate(rCount)
-			ofile, err := os.OpenFile(oname, os.O_CREATE|os.O_WRONLY, 0644)
+			fmt.Printf("worker %v reducing files with ID %v to file %v\n", os.Getpid(), rCount, oname)
+			ofile, err := os.OpenFile(tempFile.Name(), os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, oname)
 			}
@@ -152,7 +170,9 @@ mainLoop:
 
 				i = j
 			}
-			reportTask(taskType, taskFile)
+			os.Rename(tempFile.Name(), oname)
+			tempFile.Close()
+			reportTask(taskType, oname)
 		}
 
 		// uncomment to send the Example RPC to the coordinator.
@@ -232,6 +252,7 @@ func readIntermediate(taskID int) []KeyValue {
 	toReduce := []KeyValue{}
 
 	files, err := filepath.Glob("m-*-" + fmt.Sprint(taskID))
+	fmt.Printf("files to join and reduce %v for worker %v\n", files, os.Getpid())
 	if err != nil {
 		log.Printf("error finding intermediate files: %v\n", err)
 		return []KeyValue{}

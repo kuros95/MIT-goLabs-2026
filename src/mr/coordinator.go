@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/rpc"
@@ -17,12 +18,12 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	filesToMap    []string
-	filesToReduce []string
-	workers       []WorkerType
-	rCount        int
-	noReduce      int
-	mutex         sync.Mutex
+	filesToMap   []string
+	filesReduced []string
+	workers      []WorkerType
+	rCount       int
+	noReduce     int
+	mutex        sync.Mutex
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -63,9 +64,8 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		log.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
-	// fmt.Printf("mapped letters: %v\n", c.mappedLetters)
-	// fmt.Printf("letters to map: %v\n", c.lettersToMap)
-	// fmt.Printf("files to reduce: %v\n", c.filesToReduce)
+	fmt.Printf("rCount: %v\n", c.rCount)
+	fmt.Printf("noReduce: %v\n", c.noReduce)
 
 	if c.rCount == c.noReduce {
 		reply.Task.Type = "done"
@@ -73,11 +73,10 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 
 	} else if len(c.filesToMap) == 0 {
-		reply.Task.Filename = c.filesToReduce[0]
 		reply.Task.Type = "reduce"
 		reply.ID = c.noReduce
 		c.updateWorkers(args.WorkerID, reply.Task)
-		log.Printf("worker %v has been given task: type: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 		return nil
 
 	} else if len(c.filesToMap) > 0 {
@@ -86,12 +85,12 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.ID = c.rCount
 		reply.Task.Type = "map"
 		c.updateWorkers(args.WorkerID, reply.Task)
-		log.Printf("worker %v has been given task: type: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 		return nil
 	}
 
 	reply.Task.Type = "waiting"
-	log.Printf("worker %v has been given task: type: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+	log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
 	return nil
 }
 
@@ -108,19 +107,13 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	}
 
 	if args.Task.Type == "reduce" {
-		files, err := filepath.Glob(args.Task.Filename)
-		if err != nil {
-			log.Printf("error finding intermediate files: %v\n", err)
+		if slices.IndexFunc(c.filesReduced, func(f string) bool { return f == args.Task.Filename }) != -1 {
 			reply.Task.Type = "waiting"
 			c.updateWorkers(args.WorkerID, reply.Task)
-			return nil
-		}
-		if len(files) > 0 {
 			log.Printf("task %v for file %v has already been completed...\n\n", args.Task.Type, args.Task.Filename)
-			reply.Task.Type = "waiting"
-			c.updateWorkers(args.WorkerID, reply.Task)
 			return nil
 		}
+		c.filesReduced = append(c.filesReduced, args.Task.Filename)
 		if c.noReduce < c.rCount {
 			c.noReduce++
 		}
@@ -134,7 +127,6 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 			c.updateWorkers(args.WorkerID, reply.Task)
 			return nil
 		}
-		c.filesToReduce = append(c.filesToReduce, args.Task.Filename)
 		c.filesToMap = slices.Delete(c.filesToMap, index, index+1)
 
 	}
