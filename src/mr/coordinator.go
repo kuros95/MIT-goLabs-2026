@@ -72,10 +72,27 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		log.Printf("giving another task to worker %v\n", args.WorkerID)
 	}
 
+	mrFiles, err := filepath.Glob("mr-out-*")
+	if err != nil {
+		log.Printf("error finding files: %v\n", err)
+	}
+	if len(mrFiles) > 0 {
+		for i := range c.rTasks {
+			slices.Sort(mrFiles)
+			if !slices.Contains(mrFiles, "mr-out-"+fmt.Sprint(i)) {
+				c.rTasks[i].done = false
+				log.Printf("file mr-out-%v is missing; setting task %v to not done...\n", i, i)
+			}
+		}
+	}
+	fmt.Printf("rFiles: %v\n", mrFiles)
+
 	fmt.Printf("mCount: %v\n", c.mCount)
 	fmt.Printf("rCount: %v\n", c.rCount)
 	fmt.Printf("noReduce: %v\n", c.noReduce)
 	fmt.Printf("noMap: %v\n", c.noMap)
+	fmt.Printf("rTasks: %v\n", c.rTasks)
+	fmt.Printf("files reduced: %v\n", c.filesReduced)
 
 	if c.noMap == c.mCount && c.noReduce == c.rCount {
 		c.done = true
@@ -84,19 +101,21 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		return nil
 
 	} else if len(c.filesToMap) == 0 && c.noMap == c.mCount {
-		reply.Task.Type = "reduce"
+
 		newID := slices.IndexFunc(c.rTasks, func(t task) bool { return !t.done })
 		if newID == -1 {
 			reply.Task.Type = "waiting"
 			c.updateWorkers(args.WorkerID, reply.Task)
-			log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+			log.Printf("all reduce tasks are done/worked on; worker %v has been given task: %v...\n\n", args.WorkerID, reply.Task.Type)
 			return nil
 		}
 		reply.ID = newID
+		reply.Task.Filename = "mr-out-" + fmt.Sprint(newID)
+		reply.Task.Type = "reduce"
 		c.rTasks[newID].done = true
-		c.filesReduced = append(c.filesReduced, reply.Task.Filename)
+		c.filesReduced = append(c.filesReduced, "mr-out-"+fmt.Sprint(newID))
 		c.updateWorkers(args.WorkerID, reply.Task)
-		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+		log.Printf("worker %v has been given task: %v, file: %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename)
 		return nil
 
 	} else if len(c.filesToMap) > 0 {
@@ -106,12 +125,12 @@ func (c *Coordinator) GetTask(args *WorkerType, reply *WorkerType) error {
 		reply.ID = c.rCount
 		c.filesToMap = slices.Delete(c.filesToMap, 0, 1)
 		c.updateWorkers(args.WorkerID, reply.Task)
-		log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+		log.Printf("worker %v has been given task: %v, file: %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename)
 		return nil
 	}
 
 	reply.Task.Type = "waiting"
-	log.Printf("worker %v has been given task: %v, file: %v at %v\n\n", args.WorkerID, reply.Task.Type, reply.Task.Filename, reply.TimeStamp.Format(time.DateTime))
+	log.Printf("worker %v has been given task: %v...\n\n", args.WorkerID, reply.Task.Type)
 	return nil
 }
 
@@ -119,13 +138,7 @@ func (c *Coordinator) ReportTask(args *WorkerType, reply *WorkerType) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	log.Printf("reporting task %v from worker %v for file %v\n", args.Task.Type, args.WorkerID, args.Task.Filename)
-	if c.workers[slices.IndexFunc(c.workers, func(w WorkerType) bool { return w.WorkerID == args.WorkerID })].IsReassigned == true {
-		reply.Task.Type = "waiting"
-		c.updateWorkers(args.WorkerID, reply.Task)
-		log.Printf("task %v for file %v has already been reassigned...\n\n", args.Task.Type, args.Task.Filename)
-		return nil
-	}
+	log.Printf("reporting task %v from worker %v for file %v\n", args.Task.Type, args.WorkerID, "mr-out-"+fmt.Sprint(args.ID))
 	if args.Task.Type == "map" && c.noMap < c.mCount {
 		c.noMap++
 	}
@@ -177,9 +190,10 @@ func (c *Coordinator) Done() bool {
 		if err != nil {
 			log.Printf("error finding intermediate files: %v\n", err)
 		}
-		for _, f := range files {
-			os.Remove(f)
-		}
+		fmt.Printf("removing files: %v\n", files)
+		//for _, f := range files {
+		//	os.Remove(f)
+		//}
 		ret = true
 	}
 	// Your code here.
@@ -223,12 +237,22 @@ func MakeCoordinator(sockname string, files []string, nReduce int) *Coordinator 
 						switch c.workers[w].Task.Type {
 						case "map":
 							c.filesToMap = append(c.filesToMap, c.workers[w].Task.Filename)
-							log.Printf("worker %v has timed out and been reassigned task: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, c.workers[w].Task.Filename)
+							log.Printf("worker %v has timed out and task has been reassigned: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, c.workers[w].Task.Filename)
 						case "reduce":
-							index := slices.IndexFunc(c.filesReduced, func(f string) bool { return f == c.workers[w].Task.Filename })
+							log.Printf("worker %v has timed out and task has been reassigned: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, "mr-out-"+fmt.Sprint(c.workers[w].ID))
+							index := slices.IndexFunc(c.filesReduced, func(f string) bool { return f == "mr-out-"+fmt.Sprint(c.workers[w].ID) })
+							fmt.Printf("index of file to be removed: %v, length: %v\n", index, len(c.filesReduced))
 							c.rTasks[c.workers[w].ID].done = false
-							c.filesReduced = slices.Delete(c.filesReduced, index, index+1)
-							log.Printf("worker %v has timed out and been reassigned task: %v, file: %v\n\n", c.workers[w].WorkerID, c.workers[w].Task.Type, c.workers[w].Task.Filename)
+							if index != -1 {
+								c.filesReduced = slices.Delete(c.filesReduced, index, index+1)
+							}
+							err := os.Remove("mr-out-" + fmt.Sprint(c.workers[w].ID))
+							if err != nil {
+								log.Printf("error removing file: %v\n", err)
+							}
+							if err == nil {
+								log.Printf("file mr-out-%v has been removed\n", c.workers[w].ID)
+							}
 						}
 					}
 				}

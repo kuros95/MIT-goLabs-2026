@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -58,6 +59,7 @@ mainLoop:
 			break mainLoop
 		case "waiting":
 			log.Println("waiting for next task...")
+			time.Sleep(time.Second)
 			continue
 		case "map":
 			divider := len(alphabet) / rCount
@@ -105,7 +107,7 @@ mainLoop:
 
 				finalName := "m-" + taskFile[l+1:l+2] + "-" + fmt.Sprint(n)
 				fmt.Printf("worker %v writing to file: %v\n", os.Getpid(), finalName)
-				tempFile, err := os.CreateTemp("", "m-tmp-out-*")
+				tempFile, err := os.CreateTemp(".", "m-tmp-out-*")
 				if err != nil {
 					log.Fatalf("error: %v file: %v", err, tempFile.Name())
 				}
@@ -127,7 +129,6 @@ mainLoop:
 
 			reportTask(taskType, taskFile)
 		case "reduce":
-
 			oname := "mr-out-" + fmt.Sprint(rCount)
 			files, err := filepath.Glob(oname)
 			if err != nil {
@@ -138,7 +139,7 @@ mainLoop:
 				log.Printf("task %v for file %v has already been completed...\n\n", taskType, oname)
 				continue
 			}
-			tempFile, err := os.CreateTemp("", "mr-tmp-out-*")
+			tempFile, err := os.CreateTemp(".", "mr-tmp-out-*")
 			if err != nil {
 				log.Fatalf("error: %v file: %v", err, tempFile.Name())
 			}
@@ -230,7 +231,7 @@ func reportTask(taskType string, taskFile string) string {
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v reporting task: %v for file %v\n\n", os.Getpid(), taskType, taskFile)
+		log.Printf("worker %v reported task: %v for file %v\n\n", os.Getpid(), taskType, taskFile)
 	} else {
 		log.Printf("task report failed!\n")
 	}
