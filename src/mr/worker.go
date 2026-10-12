@@ -51,39 +51,26 @@ func Worker(sockname string, mapf func(string, string) []KeyValue,
 
 mainLoop:
 	for {
-		//time.Sleep(time.Second)
+		//Consider a reader to get all possible first letters and become independent from standard alphabet
+		// The / operator gives whole numbers as answers, % operator gives the remainder. Use them
 		taskType, taskFile, rCount := getTask()
 		switch taskType {
 		case "done":
-			log.Printf("worker %v terminating after job well done...\n", os.Getpid())
+			//log.Printf("worker %v terminating after job well done...\n", os.Getpid())
 			break mainLoop
 		case "waiting":
-			log.Println("waiting for next task...")
+			//log.Println("waiting for next task...")
 			time.Sleep(time.Second)
 			continue
 		case "map":
 			divider := len(alphabet) / rCount
 			data, err := os.ReadFile(taskFile)
 			if err != nil {
-				log.Printf("error while reading file %v: %v\n", taskFile, err)
+				//log.Printf("error while reading file %v: %v\n", taskFile, err)
 				data = []byte{}
 			}
 
 			intermediate := mapf(taskFile, string(data))
-
-			// //without this part TestMapParallel produces a false negative
-			// //logs would indicate only 2 workers present, but they would be counted multiple times
-			// //this part reduces the mention of each worker to exactly once
-			// files, err := filepath.Glob("m-out-*")
-			// if err != nil {
-			// 	log.Printf("error finding files: %v\n", err)
-			// }
-			// if len(files) > 1 {
-			// 	n := countPattern(files, "times-"+fmt.Sprint(os.Getpid()))
-			// 	if n > 1 {
-			// 		intermediate = []KeyValue{}
-			// 	}
-			// }
 			var i int
 			for n := range rCount {
 				var letters []string
@@ -92,7 +79,6 @@ mainLoop:
 				} else if n == rCount-1 {
 					letters = alphabet[i:]
 				}
-				fmt.Printf("worker %v writing letters: %v for file %v\n", os.Getpid(), letters, taskFile[11:])
 
 				var toWrite []KeyValue
 				for i := range letters {
@@ -106,7 +92,6 @@ mainLoop:
 				l := strings.Index(taskFile, "-")
 
 				finalName := "m-" + taskFile[l+1:l+2] + "-" + fmt.Sprint(n)
-				fmt.Printf("worker %v writing to file: %v\n", os.Getpid(), finalName)
 				tempFile, err := os.CreateTemp(".", "m-tmp-out-*")
 				if err != nil {
 					log.Fatalf("error: %v file: %v", err, tempFile.Name())
@@ -132,11 +117,11 @@ mainLoop:
 			oname := "mr-out-" + fmt.Sprint(rCount)
 			files, err := filepath.Glob(oname)
 			if err != nil {
-				log.Printf("error finding intermediate files: %v\n", err)
+				//log.Printf("error finding intermediate files: %v\n", err)
 				continue
 			}
 			if len(files) > 0 {
-				log.Printf("task %v for file %v has already been completed...\n\n", taskType, oname)
+				//log.Printf("task %v for file %v has already been completed...\n\n", taskType, oname)
 				continue
 			}
 			tempFile, err := os.CreateTemp(".", "mr-tmp-out-*")
@@ -144,14 +129,6 @@ mainLoop:
 				log.Fatalf("error: %v file: %v", err, tempFile.Name())
 			}
 			intermediate := readIntermediate(rCount)
-			fmt.Printf("worker %v reducing files with ID %v to file %v\n", os.Getpid(), rCount, oname)
-			ofile, err := os.OpenFile(tempFile.Name(), os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Fatalf("error: %v file: %v", err, oname)
-			}
-			defer ofile.Close()
-			// call Reduce on each distinct key in intermediate[],
-			// and print the result to mr-out-0.
 
 			i := 0
 			for i < len(intermediate) {
@@ -168,14 +145,17 @@ mainLoop:
 
 				// this is the correct format for each line of Reduce output.
 				toWrite = fmt.Sprintf("%v %v\n", intermediate[i].Key, output)
-				_, err := ofile.WriteString(toWrite)
+				_, err := tempFile.WriteString(toWrite)
 				if err != nil {
-					log.Printf("error while writing to file %v: %v\n", ofile.Name(), err)
+					log.Printf("error while writing to file %v: %v\n", tempFile.Name(), err)
 				}
-
 				i = j
 			}
-			os.Rename(tempFile.Name(), oname)
+			err = os.Rename(tempFile.Name(), oname)
+			if err != nil {
+				os.Exit(1)
+				//log.Fatalf("error renaming temp file %v to %v, %v\n", tempFile.Name(), oname, err)
+			}
 			tempFile.Close()
 			reportTask(taskType, oname)
 		}
@@ -218,9 +198,9 @@ func getTask() (string, string, int) {
 	reply := WorkerType{}
 	ok := call("Coordinator.GetTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v received task: %v for file %v with nReduce %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.ID)
+		//log.Printf("worker %v received task: %v for file %v with nReduce %v\n\n", os.Getpid(), reply.Task.Type, reply.Task.Filename, reply.ID)
 	} else {
-		log.Printf("task acquisition failed!\n")
+		//log.Printf("task acquisition failed!\n")
 	}
 	return reply.Task.Type, reply.Task.Filename, reply.ID
 }
@@ -231,9 +211,9 @@ func reportTask(taskType string, taskFile string) string {
 	reply := WorkerType{}
 	ok := call("Coordinator.ReportTask", &args, &reply)
 	if ok {
-		log.Printf("worker %v reported task: %v for file %v\n\n", os.Getpid(), taskType, taskFile)
+		//log.Printf("worker %v reported task: %v for file %v\n\n", os.Getpid(), taskType, taskFile)
 	} else {
-		log.Printf("task report failed!\n")
+		//log.Printf("task report failed!\n")
 	}
 	return reply.Task.Type
 }
@@ -242,19 +222,18 @@ func readIntermediate(taskID int) []KeyValue {
 	toReduce := []KeyValue{}
 
 	files, err := filepath.Glob("m-*-" + fmt.Sprint(taskID))
-	fmt.Printf("files to join and reduce %v for worker %v\n", files, os.Getpid())
 	if err != nil {
-		log.Printf("error finding intermediate files: %v\n", err)
+		//log.Printf("error finding intermediate files: %v\n", err)
 		return []KeyValue{}
 	}
 	if len(files) == 0 {
-		log.Printf("no intermediate files found for taskID %v\n", taskID)
+		//log.Printf("no intermediate files found for taskID %v\n", taskID)
 		return []KeyValue{}
 	}
 	for i := range files {
 		data, err := os.ReadFile(files[i])
 		if err != nil {
-			log.Printf("error while reading file %v: %v\n", files[i], err)
+			//log.Printf("error while reading file %v: %v\n", files[i], err)
 			continue
 		}
 		if len(data) == 0 {
@@ -263,12 +242,6 @@ func readIntermediate(taskID int) []KeyValue {
 
 		draft := string(data)
 		fileContent := strings.Split(draft, " ")
-		// for i, w := range fileContent {
-		// 	if unicode.IsLetter(rune(w[0])) && i+1 < len(fileContent) {
-		// 		kv := KeyValue{fileContent[i], fileContent[i+1]}
-		// 		toReduce = append(toReduce, kv)
-		// 	}
-		// }
 		for i := 0; i < len(fileContent)-1; i += 2 {
 			k := fileContent[i]
 			v := fileContent[i+1]
