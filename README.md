@@ -24,7 +24,7 @@ This repo contains my solution to openly available [MIT labs](https://pdos.csail
 *Note: if you modify worker.go, you will have to rebuild the plugin*
 
 3. Run cooridinator \
-`go run mrcoordinator.go /tmp/my.sock pg-being_ernest.txt pg-dorian_gray.txt` \
+`go run mrcoordinator.go /tmp/my.sock pg-being_ernest.txt pg-dorian_gray.txt pg-frankenstein.txt pg-grimm.txt pg-huckleberry_finn.txt pg-metamorphosis.txt pg-sherlock_holmes.txt pg-tom_sawyer.txt` \
 Syntax: `mrcoordinator.go sockname inputfiles...`
 
 4. Run worker in a separate terminal \
@@ -34,3 +34,37 @@ Syntax: `worker.go plugin sockname`
 5. Observe the output in files `mr-out-X` in `src/main`
 
 The solution has been tested on up to 4 workers, each time resulting in the same output.
+
+Or you can trust the test output:
+
+```
+kuros@ubuntu-machine:~/go-labs-MIT/src$ rm -rf ./mr/mr-tmp-* && make mr
+go build -race -o main/mrsequential main/mrsequential.go
+go build -race -o main/mrcoordinator main/mrcoordinator.go
+go build -race -o main/mrworker main/mrworker.go&
+(cd mrapps && go build -race -buildmode=plugin wc.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin indexer.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin mtiming.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin rtiming.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin jobcount.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin early_exit.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin crash.go) || exit 1
+(cd mrapps && go build -race -buildmode=plugin nocrash.go) || exit 1
+cd mr; go test -v -race 
+=== RUN   TestWc
+--- PASS: TestWc (9.18s)
+=== RUN   TestIndexer
+--- PASS: TestIndexer (5.96s)
+=== RUN   TestMapParallel
+--- PASS: TestMapParallel (8.04s)
+=== RUN   TestReduceParallel
+--- PASS: TestReduceParallel (11.05s)
+=== RUN   TestJobCount
+--- PASS: TestJobCount (12.05s)
+=== RUN   TestEarlyExit
+--- PASS: TestEarlyExit (4.08s)
+=== RUN   TestCrashWorker
+--- PASS: TestCrashWorker (44.18s)
+PASS
+ok      6.5840/mr       95.564s
+```
